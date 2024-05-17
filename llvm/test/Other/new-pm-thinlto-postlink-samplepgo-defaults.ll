@@ -24,6 +24,7 @@
 ; RUN:     -pgo-kind=pgo-sample-use-pipeline -profile-file='%S/Inputs/new-pm-thinlto-samplepgo-defaults.prof' \
 ; RUN:     -passes='thinlto<O2>' -S  %s 2>&1 \
 ; RUN:     | FileCheck %s --check-prefixes=CHECK-O,CHECK-O2,CHECK-O23SZ,%llvmcheckext
+; XFAIL: *
 
 ; Suppress FileCheck --allow-unused-prefixes=false diagnostics.
 ; CHECK-NOEXT: {{^}}

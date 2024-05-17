@@ -81,6 +81,9 @@ void LLVMPassBuilderOptionsSetLoopVectorization(
 void LLVMPassBuilderOptionsSetSLPVectorization(
     LLVMPassBuilderOptionsRef Options, LLVMBool SLPVectorization);
 
+void LLVMPassBuilderOptionsSetSandboxVectorization(
+    LLVMPassBuilderOptionsRef Options, LLVMBool SandboxVectorization);
+
 void LLVMPassBuilderOptionsSetLoopUnrolling(LLVMPassBuilderOptionsRef Options,
                                             LLVMBool LoopUnrolling);
 

@@ -137,6 +137,7 @@
 #include "llvm/Transforms/Utils/SimplifyCFGOptions.h"
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
 #include "llvm/Transforms/Vectorize/SLPVectorizer.h"
+#include "llvm/Transforms/Vectorize/SandboxVec/SandboxVectorizer.h"
 #include "llvm/Transforms/Vectorize/VectorCombine.h"
 
 using namespace llvm;
@@ -298,6 +299,9 @@ static cl::opt<AttributorRunOption> AttributorRun(
 static cl::opt<bool> UseLoopVersioningLICM(
     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
     cl::desc("Enable the experimental Loop Versioning LICM pass"));
+
+static cl::opt<bool> RunSBVec("enable-sbvec", cl::init(true), cl::Hidden,
+                               cl::desc("Run the Sandbox Vectorizer "));
 
 namespace llvm {
 extern cl::opt<bool> EnableMemProfContextDisambiguation;
@@ -1306,7 +1310,10 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
 
   // Optimize parallel scalar instruction chains into SIMD instructions.
   if (PTO.SLPVectorization) {
-    FPM.addPass(SLPVectorizerPass());
+    if (RunSBVec)
+      FPM.addPass(SandboxVectorizerPass());
+    else
+      FPM.addPass(SLPVectorizerPass());
     if (Level.getSpeedupLevel() > 1 && ExtraVectorizerPasses) {
       FPM.addPass(EarlyCSEPass());
     }
