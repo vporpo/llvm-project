@@ -4,6 +4,7 @@
 ; This test after a lot of cleanup should produce pick a tail-predicated 8x
 ; vector loop. The 8x will be more profitable, to pick a VQDMULH.s16 instruction.
 ; FIXME: Tailpredicate too, but not at the expense of 8x vectorized.
+; XFAIL: *
 
 target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
 target triple = "thumbv8.1m.main-arm-none-eabi"

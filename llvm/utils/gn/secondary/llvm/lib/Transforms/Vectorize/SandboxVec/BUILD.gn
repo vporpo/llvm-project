@@ -1,0 +1,30 @@
+static_library("SandboxVec") {
+  output_name = "LLVMSandboxVec"
+  deps = [
+    "//llvm/lib/Analysis",
+    "//llvm/lib/IR",
+    "//llvm/lib/Support",
+    "//llvm/lib/Transforms/SandboxIR",
+  ]
+  sources = [
+    "Analysis.cpp",
+    "CostModel.cpp",
+    "DependencyGraph.cpp",
+    "InstrInterval.cpp",
+    "InstrMaps.cpp",
+    "SBPass.cpp",
+    "SBPassManager.cpp",
+    "SBRegion.cpp",
+    "SandboxIRVec.cpp",
+    "SandboxVectorizer.cpp",
+    "Scheduler.cpp",
+    "SeedCollector.cpp",
+    "VecUtils.cpp",
+    "Passes/AcceptOrRevert.cpp",
+    "Passes/CollectAndDumpSeeds.cpp",
+    "Passes/DumpRegion.cpp",
+    "Passes/PackReuse.cpp",
+    "Passes/VectorizePackOperands.cpp",
+    "Passes/VectorizeScalars.cpp",
+  ]
+}
