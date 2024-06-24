@@ -1,3 +1,5 @@
+add_subdirectory(SandboxVec)
+
 add_llvm_component_library(LLVMVectorize
   LoadStoreVectorizer.cpp
   LoopIdiomVectorize.cpp
@@ -26,4 +28,6 @@ add_llvm_component_library(LLVMVectorize
   Core
   Support
   TransformUtils
+  SandboxVec
   )
+

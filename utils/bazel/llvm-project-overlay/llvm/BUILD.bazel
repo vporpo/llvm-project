@@ -1468,6 +1468,43 @@ cc_library(
 )
 
 cc_library(
+    name = "SandboxIR",
+    srcs = glob([
+        "lib/Transforms/SandboxIR/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/SandboxIR/*.h",
+        "include/llvm/Transforms/SandboxIR/*.def",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Core",
+        ":Support",
+        ":config",
+    ],
+)
+
+cc_library(
+    name = "SandboxVec",
+    srcs = glob([
+        "lib/Transforms/Vectorize/SandboxVec/*.cpp",
+        "lib/Transforms/Vectorize/SandboxVec/Passes/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/Vectorize/SandboxVec/*.h",
+        "include/llvm/Transforms/Vectorize/SandboxVec/Passes/*.h",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":SandboxIR",
+        ":Core",
+        ":Analysis",
+        ":Support",
+        ":config",
+    ],
+)
+
+cc_library(
     name = "Vectorize",
     srcs = glob([
         "lib/Transforms/Vectorize/*.cpp",
@@ -1754,6 +1791,7 @@ cc_library(
         ":ObjCARC",
         ":Object",
         ":ProfileData",
+        ":SandboxVec",
         ":Scalar",
         ":Support",
         ":Target",
@@ -1826,6 +1864,7 @@ cc_library(
         ":InstCombine",
         ":Instrumentation",
         ":ObjCARC",
+        ":SandboxVec",
         ":Scalar",
         ":Vectorize",
     ],
@@ -2479,6 +2518,7 @@ gentbl(
             ":MC",
             ":Passes",  # TODO(chandlerc): Likely a layering violation.
             ":ProfileData",
+            ":SandboxVec",
             ":Scalar",
             ":Support",
             ":Target",
@@ -2658,6 +2698,7 @@ cc_library(
         ":Instrumentation",
         ":MC",
         ":ObjCARC",
+        ":SandboxVec",
         ":Scalar",
         ":Support",
         ":Target",

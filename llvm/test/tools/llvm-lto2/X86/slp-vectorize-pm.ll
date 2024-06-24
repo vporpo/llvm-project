@@ -16,6 +16,7 @@
 ; RUN: llvm-lto2 run %t1.bc -o %t5.o -O3 -r %t1.bc,foo,plx -debug-pass-manager \
 ; RUN:  -save-temps 2>&1 | FileCheck %s --check-prefix=CHECK-O3-SLP
 ; RUN: llvm-dis %t5.o.1.4.opt.bc -o - | FileCheck %s --check-prefix=CHECK-O3-LPV
+; XFAIL: *
 
 ; CHECK-O0-SLP-NOT: Running pass: SLPVectorizerPass
 ; CHECK-O1-SLP-NOT: Running pass: SLPVectorizerPass

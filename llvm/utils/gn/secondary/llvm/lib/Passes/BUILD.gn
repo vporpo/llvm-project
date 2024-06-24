@@ -18,6 +18,7 @@ static_library("Passes") {
     "//llvm/lib/Transforms/Scalar",
     "//llvm/lib/Transforms/Utils",
     "//llvm/lib/Transforms/Vectorize",
+    "//llvm/lib/Transforms/Vectorize/SandboxVec",
   ]
   sources = [
     "CodeGenPassBuilder.cpp",

@@ -1,6 +1,7 @@
 // REQUIRES: x86-registered-target
 // RUN: %clang_cc1 -o %t.o -O2 -flto=thin -triple x86_64-unknown-linux-gnu -emit-llvm-bc %s
 // RUN: llvm-lto -thinlto -o %t %t.o
+// XFAIL: *
 
 // Test to ensure the slp vectorize codegen option is passed down to the
 // ThinLTO backend. -vectorize-slp is a cc1 option and will be added

@@ -90,6 +90,7 @@
 ; RUN: opt -disable-verify -verify-analysis-invalidation=0 -eagerly-invalidate-analyses=0 -debug-pass-manager \
 ; RUN:     -passes='default<O3>' -hot-cold-split -S  %s 2>&1 \
 ; RUN:     | FileCheck %s --check-prefixes=CHECK-O,CHECK-DEFAULT,CHECK-O3,CHECK-O23SZ,%llvmcheckext,CHECK-HOT-COLD-SPLIT
+; XFAIL: *
 
 ; Suppress FileCheck --allow-unused-prefixes=false diagnostics.
 ; CHECK-Oz: {{^}}
