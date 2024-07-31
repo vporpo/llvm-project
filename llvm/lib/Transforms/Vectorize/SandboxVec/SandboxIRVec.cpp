@@ -825,11 +825,12 @@ sandboxir::PackInst::getLLVMInstrsWithExternalOperands() const {
     if (auto *InsertI = dyn_cast<llvm::InsertElementInst>(I)) {
       // If this is an internal insert, it must have an Extract operand, which
       // is the external facing IR instruction.
-      if (auto *ExtractOp =
-              dyn_cast<llvm::ExtractElementInst>(InsertI->getOperand(1))) {
-        if (find(PackInstrs, ExtractOp) != PackInstrs.end())
-          // ExtractOp is the out-facing instruction, not the insert.
-          IRInstrs.push_back(ExtractOp);
+      auto *ExtractOp =
+          dyn_cast<llvm::ExtractElementInst>(InsertI->getOperand(1));
+      if (ExtractOp != nullptr &&
+          find(PackInstrs, ExtractOp) != PackInstrs.end()) {
+        // ExtractOp is the out-facing instruction, not the insert.
+        IRInstrs.push_back(ExtractOp);
       } else {
         // This is an external-facing Insert.
         IRInstrs.push_back(InsertI);

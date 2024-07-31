@@ -208,6 +208,41 @@ define void @foo(ptr %ptr) {
   EXPECT_EQ(Use0.getUser(), Pack);
 }
 
+// Check that we drop references once we erase a Pack.
+TEST_F(SandboxIRVecTest, SBErasePackDropReferences) {
+  parseIR(C, R"IR(
+define void @foo(ptr %ptr) {
+  %ptr0 = getelementptr float, ptr %ptr, i32 0
+  %VecL = load <2 x float>, ptr %ptr0, align 4
+  %Unpack = extractelement <2 x float> %VecL, i64 0
+  %Pack = insertelement <2 x float> poison, float %Unpack, i64 0
+  %Pack1 = insertelement <2 x float> %Pack, float %Unpack, i64 1
+  store <2 x float> %VecL, ptr %ptr0, align 4
+  ret void
+}
+)IR");
+  Function &F = *M->getFunction("foo");
+  DominatorTree DT(F);
+  TargetLibraryInfo TLI(TLII);
+  DataLayout DL(M.get());
+  AssumptionCache AC(F);
+  BasicAAResult BAA(DL, F, TLI, AC, &DT);
+  AAResults AA(TLI);
+  AA.addAAResult(BAA);
+  sandboxir::SBVecContext Ctx(C, AA);
+
+  auto &SBF = *Ctx.createFunction(&F);
+  auto &SBBB = *SBF.begin();
+  auto It = SBBB.begin();
+  It++; // Skip over %ptr0.
+  It++; // Skip over %VecL.
+  auto *Unpack = cast<sandboxir::UnpackInst>(&*It++);
+  auto *Pack = cast<sandboxir::PackInst>(&*It++);
+  Pack->eraseFromParent();
+
+  EXPECT_TRUE(Unpack->users().empty());
+}
+
 TEST_F(SandboxIRVecTest, SBOperandUseIterator_Pack) {
   parseIR(C, R"IR(
 define void @foo(i32 %v0, i32 %v1) {
