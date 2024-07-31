@@ -9,6 +9,7 @@
 #include "llvm/SandboxIR/SandboxIR.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Transforms/Vectorize/SandboxVec/VecUtils.h"
 #include <sstream>
 
 using namespace llvm::sandboxir;

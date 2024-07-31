@@ -105,15 +105,15 @@ class SBVecContext : public sandboxir::Context {
 
   sandboxir::Value *
   createValueFromExtractElement(llvm::ExtractElementInst *ExtractI,
-                                  int Depth) final;
+                                int Depth) final;
 
   sandboxir::Value *
   createValueFromInsertElement(llvm::InsertElementInst *InsertI,
-                                 int Depth) final;
+                               int Depth) final;
 
   sandboxir::Value *
   createValueFromShuffleVector(llvm::ShuffleVectorInst *ShuffleI,
-                                 int Depth) final;
+                               int Depth) final;
 
   /// Creates a scheduler for \p BB.
   void createdBasicBlock(sandboxir::BasicBlock &BB) final;
@@ -148,21 +148,17 @@ class SBVecContext : public sandboxir::Context {
   // Unpack
   sandboxir::UnpackInst *
   getUnpackInst(llvm::ExtractElementInst *ExtractI) const;
-  sandboxir::UnpackInst *
-  createUnpackInst(llvm::ExtractElementInst *ExtractI);
+  sandboxir::UnpackInst *createUnpackInst(llvm::ExtractElementInst *ExtractI);
   sandboxir::UnpackInst *
   getOrCreateUnpackInst(llvm::ExtractElementInst *ExtractI);
-  sandboxir::UnpackInst *
-  getUnpackInst(llvm::ShuffleVectorInst *ShuffleI) const;
-  sandboxir::UnpackInst *
-  createUnpackInst(llvm::ShuffleVectorInst *ShuffleI);
+  sandboxir::UnpackInst *getUnpackInst(llvm::ShuffleVectorInst *ShuffleI) const;
+  sandboxir::UnpackInst *createUnpackInst(llvm::ShuffleVectorInst *ShuffleI);
   sandboxir::UnpackInst *
   getOrCreateUnpackInst(llvm::ShuffleVectorInst *ShuffleI);
   // Shuffle
   sandboxir::ShuffleInst *
   getShuffleInst(llvm::ShuffleVectorInst *ShuffleI) const;
-  sandboxir::ShuffleInst *
-  createShuffleInst(llvm::ShuffleVectorInst *ShuffleI);
+  sandboxir::ShuffleInst *createShuffleInst(llvm::ShuffleVectorInst *ShuffleI);
   sandboxir::ShuffleInst *
   getOrCreateShuffleInst(llvm::ShuffleVectorInst *ShuffleI);
 
@@ -173,9 +169,7 @@ public:
   void quickFlush() final;
 
   /// Erase the scheduler that corresponds to \p BB upon BB's destruction.
-  void destroyingBB(sandboxir::BasicBlock &BB) final {
-    SchedForBB.erase(&BB);
-  }
+  void destroyingBB(sandboxir::BasicBlock &BB) final { SchedForBB.erase(&BB); }
 
   Scheduler *getScheduler(sandboxir::BasicBlock *SBBB) const;
   const DependencyGraph &getDAG(sandboxir::BasicBlock *SBBB) const;
@@ -224,8 +218,7 @@ public:
 };
 
 /// Packs multiple scalar values into a vector.
-class PackInst : public PackInstrBundle,
-                          public sandboxir::Instruction {
+class PackInst : public PackInstrBundle, public sandboxir::Instruction {
   friend sandboxir::Context; // for eraseBundleInstrs().
   /// Use sandboxir::BasicBlock::createPackInst(). Don't call the
   /// constructor directly.
@@ -233,8 +226,7 @@ class PackInst : public PackInstrBundle,
   PackInst(const DmpVector<sandboxir::Value *> &ToPack,
            sandboxir::BasicBlock *Parent);
   /// Create a Pack from its LLVM IR values.
-  PackInst(const DmpVector<llvm::Value *> &Instrs,
-           sandboxir::Context &SBCtx);
+  PackInst(const DmpVector<llvm::Value *> &Instrs, sandboxir::Context &SBCtx);
   friend class sandboxir::BasicBlock;
   llvm::InsertElementInst *
   getBottomInsert(const DmpVector<llvm::Value *> &Instrs) const;
@@ -260,21 +252,20 @@ public:
 #endif
   unsigned getOperandUseIdx(const llvm::Use &UseToMatch) const override;
   sandboxir::Use getOperandUseInternal(unsigned OperandIdx,
-                                         bool Verify) const final;
+                                       bool Verify) const final;
   bool isRealOperandUse(llvm::Use &OpUse) const final;
 
 public:
-  static sandboxir::Value *
-  create(const DmpVector<sandboxir::Value *> &PackOps,
-         sandboxir::BasicBlock::iterator WhereIt,
-         sandboxir::BasicBlock *WhereBB, sandboxir::SBVecContext &SBCtx);
-  static sandboxir::Value *
-  create(const DmpVector<sandboxir::Value *> &PackOps,
-         sandboxir::Instruction *InsertBefore,
-         sandboxir::SBVecContext &SBCtx);
-  static sandboxir::Value *
-  create(const DmpVector<sandboxir::Value *> &PackOps,
-         sandboxir::BasicBlock *InsertAtEnd, sandboxir::SBVecContext &SBCtx);
+  static sandboxir::Value *create(const DmpVector<sandboxir::Value *> &PackOps,
+                                  sandboxir::BasicBlock::iterator WhereIt,
+                                  sandboxir::BasicBlock *WhereBB,
+                                  sandboxir::SBVecContext &SBCtx);
+  static sandboxir::Value *create(const DmpVector<sandboxir::Value *> &PackOps,
+                                  sandboxir::Instruction *InsertBefore,
+                                  sandboxir::SBVecContext &SBCtx);
+  static sandboxir::Value *create(const DmpVector<sandboxir::Value *> &PackOps,
+                                  sandboxir::BasicBlock *InsertAtEnd,
+                                  sandboxir::SBVecContext &SBCtx);
   unsigned getUseOperandNo(const sandboxir::Use &Use) const final;
   unsigned getNumOfIRInstrs() const final { return PackInstrs.size(); }
   // Since a Pack corresponds to a sequence of insertelement instructions,
@@ -313,8 +304,7 @@ public:
 class PackInstAttorney {
 public:
   // For tests
-  static auto
-  getLLVMInstrsWithExternalOperands(sandboxir::PackInst *Pack) {
+  static auto getLLVMInstrsWithExternalOperands(sandboxir::PackInst *Pack) {
     return Pack->getLLVMInstrsWithExternalOperands();
   }
   // For tests
@@ -340,7 +330,7 @@ private:
                                     sandboxir::BasicBlock::iterator WhereIt,
                                     sandboxir::BasicBlock *WhereBB);
   sandboxir::Use getOperandUseInternal(unsigned OperandIdx,
-                                         bool Verify) const final {
+                                       bool Verify) const final {
     return getOperandUseDefault(OperandIdx, Verify);
   }
   bool isRealOperandUse(llvm::Use &Use) const final { return true; }
@@ -360,17 +350,16 @@ private:
   void detachExtras() final {}
 
 public:
-  static sandboxir::ShuffleInst *
-  create(sandboxir::Value *Op, ShuffleMask &Mask,
-         sandboxir::BasicBlock::iterator WhereIt,
-         sandboxir::BasicBlock *WhereBB, sandboxir::SBVecContext &SBCtx);
-  static sandboxir::ShuffleInst *
-  create(sandboxir::Value *Op, ShuffleMask &Mask,
-         sandboxir::Instruction *InsertBefore,
-         sandboxir::SBVecContext &SBCtx);
-  static sandboxir::ShuffleInst *
-  create(sandboxir::Value *Op, ShuffleMask &Mask,
-         sandboxir::BasicBlock *InsertAtEnd, sandboxir::SBVecContext &SBCtx);
+  static sandboxir::ShuffleInst *create(sandboxir::Value *Op, ShuffleMask &Mask,
+                                        sandboxir::BasicBlock::iterator WhereIt,
+                                        sandboxir::BasicBlock *WhereBB,
+                                        sandboxir::SBVecContext &SBCtx);
+  static sandboxir::ShuffleInst *create(sandboxir::Value *Op, ShuffleMask &Mask,
+                                        sandboxir::Instruction *InsertBefore,
+                                        sandboxir::SBVecContext &SBCtx);
+  static sandboxir::ShuffleInst *create(sandboxir::Value *Op, ShuffleMask &Mask,
+                                        sandboxir::BasicBlock *InsertAtEnd,
+                                        sandboxir::SBVecContext &SBCtx);
   static bool isShuffle(llvm::ShuffleVectorInst *ShuffleI) {
     if (!ShuffleI->isSingleSource())
       return false;
@@ -417,16 +406,15 @@ public:
 /// `extreactelement`, while vectors with a `shufflevector`.
 class UnpackInst : public sandboxir::Instruction {
   sandboxir::Use getOperandUseInternal(unsigned OpIdx,
-                                         bool Verify) const final {
+                                       bool Verify) const final {
     llvm::Use *LLVMUse;
     if (OpIdx != getNumOperands()) {
-      unsigned LLVMOpIdx =
-          isa<llvm::ExtractElementInst>(Val) ? OpIdx : OpIdx + 1;
+      unsigned LLVMOpIdx = OpIdx;
       LLVMUse = &cast<llvm::User>(Val)->getOperandUse(LLVMOpIdx);
     } else
       LLVMUse = cast<llvm::User>(Val)->op_end();
-    return sandboxir::Use(
-        LLVMUse, const_cast<sandboxir::UnpackInst *>(this), Ctx);
+    return sandboxir::Use(LLVMUse, const_cast<sandboxir::UnpackInst *>(this),
+                          Ctx);
   }
   bool isRealOperandUse(llvm::Use &Use) const final { return true; }
   unsigned getOperandUseIdx(const llvm::Use &UseToMatch) const final {
@@ -448,22 +436,21 @@ class UnpackInst : public sandboxir::Instruction {
 public:
   /// Please note that this may return a constant if folded.
   static sandboxir::Value *create(sandboxir::Value *Op, unsigned UnpackLane,
-                                    unsigned NumLanesToUnpack,
-                                    sandboxir::BasicBlock::iterator WhereIt,
-                                    sandboxir::BasicBlock *WhereBB,
-                                    sandboxir::SBVecContext &SBCtx);
+                                  unsigned NumLanesToUnpack,
+                                  sandboxir::BasicBlock::iterator WhereIt,
+                                  sandboxir::BasicBlock *WhereBB,
+                                  sandboxir::SBVecContext &SBCtx);
   static sandboxir::Value *create(sandboxir::Value *Op, unsigned UnpackLane,
-                                    unsigned NumLanesToUnpack,
-                                    sandboxir::Instruction *InsertBefore,
-                                    sandboxir::SBVecContext &SBCtx);
+                                  unsigned NumLanesToUnpack,
+                                  sandboxir::Instruction *InsertBefore,
+                                  sandboxir::SBVecContext &SBCtx);
   static sandboxir::Value *create(sandboxir::Value *Op, unsigned UnpackLane,
-                                    unsigned NumLanesToUnpack,
-                                    sandboxir::BasicBlock *InsertAtEnd,
-                                    sandboxir::SBVecContext &SBCtx);
+                                  unsigned NumLanesToUnpack,
+                                  sandboxir::BasicBlock *InsertAtEnd,
+                                  sandboxir::SBVecContext &SBCtx);
   unsigned getUseOperandNo(const sandboxir::Use &Use) const final {
     unsigned LLVMOperandNo = Use.LLVMUse->getOperandNo();
-    return isa<llvm::ExtractElementInst>(Val) ? LLVMOperandNo
-                                              : LLVMOperandNo - 1;
+    return LLVMOperandNo;
   }
   unsigned getNumOfIRInstrs() const final { return 1u; }
   /// Use sandboxir::BasicBlock::createUnpackInst(). Don't call the
@@ -481,19 +468,20 @@ public:
   /// \Returns true if \p ShuffleI is an unpack.
   static bool isUnpack(llvm::ShuffleVectorInst *ShuffleI) {
     auto Mask = ShuffleI->getShuffleMask();
-    auto NumInputElms = sandboxir::VecUtils::getNumElements(
-        ShuffleI->getOperand(0)->getType());
+    auto NumInputElms =
+        sandboxir::VecUtils::getNumElements(ShuffleI->getOperand(0)->getType());
     if (!llvm::ShuffleVectorInst::isSingleSourceMask(Mask, NumInputElms))
       return false;
     if (!ShuffleI->changesLength())
       return false;
     if (Mask.size() == 0 || (int)Mask.size() == NumInputElms)
       return false;
-    if (!isa<llvm::PoisonValue>(ShuffleI->getOperand(0)))
+    if (!isa<llvm::PoisonValue>(ShuffleI->getOperand(1)))
       return false;
+    // TODO: Use ShuffleVectorInst::isExtractSubvectorMask() ?
     // We expect element indexes in order.
     int Mask0 = Mask[0];
-    if (Mask0 < NumInputElms)
+    if (Mask0 > (int)NumInputElms - (int)Mask.size())
       return false;
     int LastElm = Mask0;
     for (auto Elm : drop_begin(Mask)) {
@@ -508,10 +496,7 @@ public:
     assert(isUnpack(ShuffleI) && "Expected an unpack!");
     int TotalElms =
         sandboxir::VecUtils::getNumLanes(ShuffleI->getOperand(0)->getType());
-    int Elm = ShuffleI->getMaskValue(0);
-    int Lane = Elm - TotalElms;
-    assert(Lane >= 0 && "Expected non-negative!");
-    return Lane;
+    return ShuffleI->getMaskValue(0);
   }
   unsigned getUnpackLane() const {
     llvm::ConstantInt *IdxC = nullptr;

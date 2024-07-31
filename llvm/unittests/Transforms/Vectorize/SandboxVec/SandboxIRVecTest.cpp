@@ -2340,13 +2340,13 @@ TEST_F(SandboxIRVecTest, VectorUnpackDetection) {
   parseIR(C, R"IR(
 define void @foo(<4 x i8> %v) {
   %Op = add <4 x i8> %v, %v
-  %Unpack0 = shufflevector <4 x i8> poison, <4 x i8> %Op, <2 x i32> <i32 4, i32 5>
-  %Unpack1 = shufflevector <4 x i8> poison, <4 x i8> %Op, <2 x i32> <i32 5, i32 6>
-  %Unpack2 = shufflevector <4 x i8> poison, <4 x i8> %Op, <1 x i32> <i32 6>
-  %NotUnpack0 = shufflevector <4 x i8> poison, <4 x i8> %Op, <2 x i32> <i32 5, i32 4>
-  %NotUnpack1 = shufflevector <4 x i8> poison, <4 x i8> %Op, <2 x i32> <i32 4, i32 6>
-  %NotUnpack2 = shufflevector <4 x i8> poison, <4 x i8> %Op, <2 x i32> <i32 0, i32 4>
-  %NotUnpack3 = shufflevector <4 x i8> poison, <4 x i8> %Op, <4 x i32> <i32 4, i32 5, i32 6, i32 7>
+  %Unpack0 = shufflevector <4 x i8> %Op, <4 x i8> poison, <2 x i32> <i32 0, i32 1>
+  %Unpack1 = shufflevector <4 x i8> %Op, <4 x i8> poison, <2 x i32> <i32 1, i32 2>
+  %Unpack2 = shufflevector <4 x i8> %Op, <4 x i8> poison, <1 x i32> <i32 2>
+  %NotUnpack0 = shufflevector <4 x i8> %Op, <4 x i8> poison, <2 x i32> <i32 1, i32 0>
+  %NotUnpack1 = shufflevector <4 x i8> %Op, <4 x i8> poison, <2 x i32> <i32 0, i32 2>
+  %NotUnpack2 = shufflevector <4 x i8> %Op, <4 x i8> poison, <2 x i32> <i32 4, i32 0>
+  %NotUnpack3 = shufflevector <4 x i8> %Op, <4 x i8> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
   ret void
 }
 )IR");
@@ -2390,6 +2390,42 @@ define void @foo(<4 x i8> %v) {
 #ifndef NDEBUG
   BB->verify();
 #endif
+}
+
+TEST_F(SandboxIRVecTest, VectorUnpackRoundTrip) {
+  parseIR(C, R"IR(
+define void @foo(<4 x i8> %v) {
+  ret void
+}
+)IR");
+  Function &LLVMF = *M->getFunction("foo");
+  DominatorTree DT(LLVMF);
+  TargetLibraryInfoImpl TLII;
+  TargetLibraryInfo TLI(TLII);
+  DataLayout DL(M.get());
+  AssumptionCache AC(LLVMF);
+  BasicAAResult BAA(DL, LLVMF, TLI, AC, &DT);
+  AAResults AA(TLI);
+  AA.addAAResult(BAA);
+  {
+    sandboxir::SBVecContext Ctx(C, AA);
+    auto *F = Ctx.createFunction(&LLVMF);
+    auto *Arg = F->getArg(0);
+    auto *BB = &*F->begin();
+    auto It = BB->begin();
+    auto *Ret = &*It++;
+
+    [[maybe_unused]] auto *Unpack =
+        sandboxir::UnpackInst::create(Arg, 1, 2, /*InsertBefore=*/Ret, Ctx);
+  }
+  {
+    // Round-trip.
+    sandboxir::SBVecContext Ctx(C, AA);
+    auto *F = Ctx.createFunction(&LLVMF);
+    auto *BB = &*F->begin();
+    auto It = BB->begin();
+    EXPECT_TRUE(isa<sandboxir::UnpackInst>(&*It++));
+  }
 }
 
 // When creating a new instruction with a constant operand, its corresponding
@@ -2536,7 +2572,7 @@ TEST_F(SandboxIRVecTest, UsesIntoUnpack) {
   parseIR(C, R"IR(
 define void @foo(<4 x i8> %v) {
   %Op = add <4 x i8> %v, %v
-  %Shuff = shufflevector <4 x i8> poison, <4 x i8> %Op, <2 x i32> <i32 4, i32 5>
+  %Shuff = shufflevector <4 x i8> %Op, <4 x i8> poison, <2 x i32> <i32 0, i32 1>
   ret void
 }
 )IR");

@@ -177,7 +177,7 @@ sandboxir::UnpackInst *
 sandboxir::SBVecContext::createUnpackInst(
     llvm::ShuffleVectorInst *ShuffleI) {
   assert(getUnpackInst(ShuffleI) == nullptr && "Already exists!");
-  auto *Op = getValue(ShuffleI->getOperand(1));
+  auto *Op = getValue(ShuffleI->getOperand(0));
   assert(Op != nullptr &&
          "Please create the operand SBValue before calling this function!");
   auto Lane = sandboxir::UnpackInst::getShuffleLane(ShuffleI);
