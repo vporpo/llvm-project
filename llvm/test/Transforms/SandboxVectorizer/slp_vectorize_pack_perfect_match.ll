@@ -9,11 +9,9 @@ define void @vectorize_packs_perfect_match(ptr noalias %ptr) {
 ;
 ; VECTOR-LABEL: define void @vectorize_packs_perfect_match(
 ; VECTOR-SAME: ptr noalias [[PTR:%.*]]) {
-; VECTOR-NEXT:    [[PTR0:%.*]] = getelementptr float, ptr [[PTR]], i32 0
-; VECTOR-NEXT:    [[VECL:%.*]] = load <3 x float>, ptr [[PTR0]], align 4
-; VECTOR-NEXT:    [[UNPACK1:%.*]] = shufflevector <3 x float> [[VECL]], <3 x float> poison, <2 x i32> <i32 1, i32 2>
-; VECTOR-NEXT:    [[UNPACK:%.*]] = extractelement <3 x float> [[VECL]], i64 0
-; VECTOR-NEXT:    store <3 x float> [[VECL]], ptr [[PTR]], align 16
+; VECTOR-NEXT:    [[PTR0:%.*]] = getelementptr float, ptr [[PTR]], i32 0, !sb [[META0:![0-9]+]]
+; VECTOR-NEXT:    [[VECL:%.*]] = load <3 x float>, ptr [[PTR0]], align 4, !sb [[META0]]
+; VECTOR-NEXT:    store <3 x float> [[VECL]], ptr [[PTR]], align 16, !sb [[META0]]
 ; VECTOR-NEXT:    ret void
 ;
 ; SCALAR-LABEL: define void @vectorize_packs_perfect_match(
@@ -22,10 +20,10 @@ define void @vectorize_packs_perfect_match(ptr noalias %ptr) {
 ; SCALAR-NEXT:    [[PTR1:%.*]] = getelementptr float, ptr [[PTR]], i32 1
 ; SCALAR-NEXT:    [[LD0:%.*]] = load float, ptr [[PTR0]], align 4
 ; SCALAR-NEXT:    [[LD1:%.*]] = load <2 x float>, ptr [[PTR1]], align 8
-; SCALAR-NEXT:    [[INS0:%.*]] = insertelement <3 x float> poison, float [[LD0]], i32 0
-; SCALAR-NEXT:    [[EXTR0:%.*]] = extractelement <2 x float> [[LD1]], i32 0
-; SCALAR-NEXT:    [[INS1:%.*]] = insertelement <3 x float> [[INS0]], float [[EXTR0]], i32 1
-; SCALAR-NEXT:    [[EXTR1:%.*]] = extractelement <2 x float> [[LD1]], i32 1
+; SCALAR-NEXT:    [[INS0:%.*]] = insertelement <3 x float> poison, float [[LD0]], i32 0, !sb [[META0:![0-9]+]]
+; SCALAR-NEXT:    [[EXTR0:%.*]] = extractelement <2 x float> [[LD1]], i32 0, !sb [[META0]]
+; SCALAR-NEXT:    [[INS1:%.*]] = insertelement <3 x float> [[INS0]], float [[EXTR0]], i32 1, !sb [[META0]]
+; SCALAR-NEXT:    [[EXTR1:%.*]] = extractelement <2 x float> [[LD1]], i32 1, !sb [[META0]]
 ; SCALAR-NEXT:    [[INS2:%.*]] = insertelement <3 x float> [[INS1]], float [[EXTR1]], i32 2
 ; SCALAR-NEXT:    store <3 x float> [[INS2]], ptr [[PTR]], align 16
 ; SCALAR-NEXT:    ret void

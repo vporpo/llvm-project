@@ -63,11 +63,22 @@ bool sandboxir::VectorizePackOperands::runOnRegion(sandboxir::Region &Rgn) {
           Vec.tryVectorize(NewBndl, Rgn, EraseCandidates);
       if (NewI == nullptr)
         continue;
+
       if (sandboxir::VecUtils::getNumLanes(NewI) ==
           sandboxir::VecUtils::getNumLanes(Pack)) {
         // Optimal case: Pack is no longer needed.
         Pack->replaceAllUsesWith(NewI);
+
+	SmallVector<UnpackInst*> Unpacks;
+	for (Value* Op : Pack->operands()) {
+	  assert(isa<UnpackInst>(Op) && "Expected unpack" && (Op->dump(), true));
+	  assert(cast<Instruction>(Op)->getOperand(0) == NewI);
+	  Unpacks.push_back(cast<UnpackInst>(Op));
+	}
+
         Pack->eraseFromParent();
+	for (auto *Unpack : Unpacks)
+	  Unpack->eraseFromParent();
       } else {
         // We also need Unpack nodes to extract from NewI and feed into Pack.
         for (auto Lane : seq<unsigned>(0, NewBndl.size())) {
