@@ -49,6 +49,13 @@ struct SchedulerTest : public testing::Test {
     AA->addAAResult(*BAA);
     return *AA;
   }
+
+  BasicBlock *getBasicBlockByName(Function &F, StringRef Name) {
+    for (BasicBlock &BB : F)
+      if (BB.getName() == Name)
+        return &BB;
+    llvm_unreachable("Expected to find basic block!");
+  }
 };
 
 TEST_F(SchedulerTest, SchedBundle) {
@@ -201,4 +208,44 @@ define void @foo(ptr noalias %ptr0, ptr noalias %ptr1) {
   EXPECT_TRUE(Sched.trySchedule({Ret}));
   EXPECT_TRUE(Sched.trySchedule({S0, S1}));
   EXPECT_TRUE(Sched.trySchedule({L0, L1}));
+}
+
+TEST_F(SchedulerTest, ReadyList) {
+  parseIR(C, R"IR(
+define void @foo(i8 %arg0, i8 %arg1) {
+bb0:
+  br label %bb1
+
+bb1:
+  %phi0 = phi i8 [%arg0, %bb0], [0, %bb1]
+  %phi1 = phi i8 [%arg1, %bb0], [1, %bb1]
+  %add0 = add i8 %arg0, %arg0
+  %add1 = add i8 %arg1, %arg1
+  ret void
+}
+)IR");
+  llvm::Function *LLVMF = &*M->getFunction("foo");
+  sandboxir::Context Ctx(C);
+  [[maybe_unused]] auto *F = Ctx.createFunction(LLVMF);
+  auto *BB1 = cast<sandboxir::BasicBlock>(
+      Ctx.getValue(getBasicBlockByName(*LLVMF, "bb1")));
+  auto It = BB1->begin();
+  auto *PHI0 = cast<sandboxir::PHINode>(&*It++);
+  auto *PHI1 = cast<sandboxir::PHINode>(&*It++);
+  auto *Add0 = cast<sandboxir::BinaryOperator>(&*It++);
+  auto *Add1 = cast<sandboxir::BinaryOperator>(&*It++);
+  auto *Ret = cast<sandboxir::ReturnInst>(&*It++);
+
+  sandboxir::Scheduler Sched(getAA(*LLVMF));
+  EXPECT_TRUE(Sched.trySchedule({Ret}));
+  EXPECT_TRUE(Sched.trySchedule({PHI0}));
+
+  {
+    auto It = BB1->begin();
+    EXPECT_EQ(&*It++, PHI0);
+    EXPECT_EQ(&*It++, PHI1);
+    EXPECT_EQ(&*It++, Add0);
+    EXPECT_EQ(&*It++, Add1);
+    EXPECT_EQ(&*It++, Ret);
+  }
 }

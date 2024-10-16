@@ -30,8 +30,21 @@ namespace llvm::sandboxir {
 class PriorityCmp {
 public:
   bool operator()(const DGNode *N1, const DGNode *N2) {
-    // TODO: This should be a hierarchical comparator.
-    return N1->getInstruction()->comesBefore(N2->getInstruction());
+    auto *I1 = N1->getInstruction();
+    auto *I2 = N2->getInstruction();
+
+    auto GetPriority = [](Instruction *I) {
+      if (isa<PHINode>(I))
+        return 0;
+      if (I->isTerminator())
+        return 2;
+      return 1;
+    };
+    int P1 = GetPriority(I1);
+    int P2 = GetPriority(I2);
+    if (P1 != P2)
+      return P1 < P2;
+    return I1->comesBefore(I2);
   }
 };
 
