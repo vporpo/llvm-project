@@ -125,36 +125,72 @@ SchedBundle *Scheduler::createBundle(ArrayRef<Instruction *> Instrs) {
 void Scheduler::eraseBundle(SchedBundle *SB) { Bndls.erase(SB); }
 
 bool Scheduler::tryScheduleUntil(ArrayRef<Instruction *> Instrs) {
-  // Use a set of instructions, instead of `Instrs` for fast lookups.
-  DenseSet<Instruction *> InstrsToDefer(Instrs.begin(), Instrs.end());
-  // This collects the nodes that correspond to instructions found in `Instrs`
-  // that have just become ready. These nodes won't be scheduled right away.
-  SmallVector<DGNode *, 8> DeferredNodes;
-
+  // Create a bundle for Instrs. If it turns out the schedule is infeasible we
+  // will dismantle it.
+  auto *InstrsSB = createBundle(Instrs);
   // Keep scheduling ready nodes until we either run out of ready nodes (i.e.,
   // ReadyList is empty), or all nodes that correspond to `Instrs` (the nodes of
   // which are collected in DeferredNodes) are all ready to schedule.
-  while (!ReadyList.empty()) {
-    auto *ReadyN = ReadyList.pop();
-    if (InstrsToDefer.contains(ReadyN->getInstruction())) {
-      // If the ready instruction is one of those in `Instrs`, then we don't
-      // schedule it right away. Instead we defer it until we can schedule it
-      // along with the rest of the instructions in `Instrs`, at the same
-      // time in a single scheduling bundle.
-      DeferredNodes.push_back(ReadyN);
-      bool ReadyToScheduleDeferred = DeferredNodes.size() == Instrs.size();
-      if (ReadyToScheduleDeferred) {
-        scheduleAndUpdateReadyList(*createBundle(Instrs));
+  SmallVector<DGNode *> Retry;
+  bool KeepScheduling = true;
+  while (KeepScheduling) {
+    enum class TryScheduleRes {
+      Success, ///> We successfully scheduled the node.
+      Failure, ///> We failed to schedule the node.
+      Done,    ///> We scheduled the `Instrs` bundle.
+    };
+    auto TrySchedule = [this, InstrsSB](DGNode *ReadyN) -> TryScheduleRes {
+      auto *SB = ReadyN->getSchedBundle();
+      if (SB == nullptr) {
+        // If ReadyN does not belong to a bundle, create a singleton bundle
+        // and schedule it.
+        auto *SingletonSB = createBundle({ReadyN->getInstruction()});
+        scheduleAndUpdateReadyList(*SingletonSB);
+        return TryScheduleRes::Success;
+      }
+      if (SB->ready()) {
+        // Remove the rest of the bundle from the ready list.
+        // TODO: Perhaps change the Scheduler + ReadyList to operate on
+        // SchedBundles instead of DGNodes.
+        for (auto *N : *SB) {
+          if (N != ReadyN)
+            ReadyList.remove(N);
+        }
+        // If all nodes in the bundle are ready.
+        scheduleAndUpdateReadyList(*SB);
+        if (SB == InstrsSB)
+          // If this is bundle corresponding to `Instrs` we are done.
+          return TryScheduleRes::Done;
+        return TryScheduleRes::Success;
+      }
+      return TryScheduleRes::Failure;
+    };
+    while (!ReadyList.empty()) {
+      auto *ReadyN = ReadyList.pop();
+      auto Res = TrySchedule(ReadyN);
+      switch (Res) {
+      case TryScheduleRes::Success:
+        continue;
+      case TryScheduleRes::Failure:
+        Retry.push_back(ReadyN);
+        continue;
+      case TryScheduleRes::Done:
         return true;
       }
-    } else {
-      // If the ready instruction is not found in `Instrs`, then we wrap it in a
-      // scheduling bundle and schedule it right away.
-      scheduleAndUpdateReadyList(*createBundle({ReadyN->getInstruction()}));
+      llvm_unreachable("Unhandled TrySchedule() result");
+    }
+    // Try to schedule nodes from the Retry list.
+    KeepScheduling = false;
+    for (auto *N : make_early_inc_range(Retry)) {
+      auto Res = TrySchedule(N);
+      if (Res == TryScheduleRes::Success) {
+        Retry.erase(find(Retry, N));
+        KeepScheduling = true;
+      }
     }
   }
-  assert(DeferredNodes.size() != Instrs.size() &&
-         "We should have succesfully scheduled and early-returned!");
+
+  eraseBundle(InstrsSB);
   return false;
 }
 
@@ -275,6 +311,7 @@ bool Scheduler::trySchedule(ArrayRef<Instruction *> Instrs) {
     // If one or more instrs are already scheduled we need to destroy the
     // top-most part of the schedule that includes the instrs in the bundle and
     // re-schedule.
+    DAG.extend(Instrs);
     trimSchedule(Instrs);
     ScheduleTopItOpt = std::next(VecUtils::getLowest(Instrs)->getIterator());
     return tryScheduleUntil(Instrs);
