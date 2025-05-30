@@ -14,6 +14,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_llvm_unittest(MIRTests
+  MachineBasicBlockName.cpp
   MachineMetadata.cpp
   MachineStableHashTest.cpp
   )
