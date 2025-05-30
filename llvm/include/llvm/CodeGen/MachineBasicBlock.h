@@ -148,6 +148,10 @@ private:
 
   const BasicBlock *BB;
   int Number;
+  /// This number is persistent across passes and is used as a unique identifier
+  /// of the block in the function across passes. This is meant to help follow
+  /// the blocks across passes in print-after-all dumps.
+  unsigned IdNumber;
 
   /// The call frame size on entry to this basic block due to call frame setup
   /// instructions in a predecessor. This is usually zero, unless basic blocks

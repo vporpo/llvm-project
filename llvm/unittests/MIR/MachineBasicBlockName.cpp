@@ -19,6 +19,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -28,9 +29,12 @@
 
 using namespace llvm;
 
+extern cl::opt<bool> PersistentMBBNames;
+
 TEST(MachineBasicBlockNameTest, BasicTest) {
   InitializeAllTargets();
   InitializeAllTargetMCs();
+  PersistentMBBNames.setValue(true);
   LLVMContext C;
   Module M("Test", C);
   auto *FType = FunctionType::get(Type::getVoidTy(C), false);
@@ -92,5 +96,5 @@ TEST(MachineBasicBlockNameTest, BasicTest) {
   EXPECT_EQ(MBB2->getNumber(), 1);
   // Check MBB names after renumbering.
   EXPECT_EQ(GetMBBName(MBB0), "bb.0.entry");
-  EXPECT_EQ(GetMBBName(MBB2), "bb.1.bar");
+  EXPECT_EQ(GetMBBName(MBB2), "bb.2.bar");
 }

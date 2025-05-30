@@ -49,11 +49,20 @@ static cl::opt<bool> PrintSlotIndexes(
              "SlotIndexes when available"),
     cl::init(true), cl::Hidden);
 
+cl::opt<bool> PersistentMBBNames(
+    "persistent-mbb-names",
+    cl::desc("The name of an MBB won't change with renumbering, making it "
+             "easier to track across passes."),
+    cl::init(false), cl::Hidden);
+
 MachineBasicBlock::MachineBasicBlock(MachineFunction &MF, const BasicBlock *B)
     : BB(B), Number(-1), xParent(&MF) {
   Insts.Parent = this;
   if (B)
     IrrLoopHeaderWeight = B->getIrrLoopHeaderWeight();
+
+  thread_local unsigned IdNumberCnt;
+  IdNumber = IdNumberCnt++;
 }
 
 MachineBasicBlock::~MachineBasicBlock() = default;
@@ -337,7 +346,8 @@ std::string MachineBasicBlock::getFullName() const {
   if (getBasicBlock())
     Name += getBasicBlock()->getName();
   else
-    Name += ("BB" + Twine(getNumber())).str();
+    Name += ("BB" + (PersistentMBBNames ? Twine(IdNumber) : Twine(getNumber())))
+                .str();
   return Name;
 }
 
@@ -488,7 +498,7 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
 ///                          determine the block's IR name.
 void MachineBasicBlock::printName(raw_ostream &os, unsigned printNameFlags,
                                   ModuleSlotTracker *moduleSlotTracker) const {
-  os << "bb." << getNumber();
+  os << "bb." << (PersistentMBBNames ? Twine(IdNumber) : Twine(getNumber()));
   bool hasAttributes = false;
 
   auto PrintBBRef = [&](const BasicBlock *bb) {
