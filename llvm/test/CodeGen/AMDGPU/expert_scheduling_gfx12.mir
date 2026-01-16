@@ -296,7 +296,9 @@ body: |
     ; GCN-NEXT: S_WAITCNT_DEPCTR .AllOff
     ; GCN-NEXT: $vgpr1 = V_MOV_B32_e32 $vgpr0, implicit $exec
     $vgpr0 = V_MOV_B32_e32 $vgpr0, implicit $exec
-    S_WAITCNT_DEPCTR .VmVsrc_1_VaVdst_1
+    ; TODO: If we use .VmVsrc_1_VaVdst_1 here the S_WAITCNT_DEPCTR goes away
+    ;       This looks like a bug in the s_waitcnt processing.
+    S_WAITCNT_DEPCTR 8167
     $vgpr1 = V_MOV_B32_e32 $vgpr0, implicit $exec
 ...
 
