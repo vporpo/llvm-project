@@ -1076,6 +1076,27 @@ getIntegerVecAttribute(const Function &F, StringRef Name, unsigned Size);
 /// Checks if \p Val is inside \p MD, a !range-like metadata.
 bool hasValueInRangeLikeMetadata(const MDNode &MD, int64_t Val);
 
+// Class of object that encapsulates latest instruction counter score
+// associated with the operand.  Used for determining whether
+// s_waitcnt instruction needs to be emitted.
+
+enum InstCounterType {
+  LOAD_CNT = 0, // VMcnt prior to gfx12.
+  DS_CNT,       // LKGMcnt prior to gfx12.
+  EXP_CNT,      //
+  STORE_CNT,    // VScnt in gfx10/gfx11.
+  NUM_NORMAL_INST_CNTS,
+  SAMPLE_CNT = NUM_NORMAL_INST_CNTS, // gfx12+ only.
+  BVH_CNT,                           // gfx12+ only.
+  KM_CNT,                            // gfx12+ only.
+  X_CNT,                             // gfx1250.
+  NUM_EXTENDED_INST_CNTS,
+  VA_VDST = NUM_EXTENDED_INST_CNTS, // gfx12+ expert mode only.
+  VM_VSRC,                          // gfx12+ expert mode only.
+  NUM_EXPERT_INST_CNTS,
+  NUM_INST_CNTS = NUM_EXPERT_INST_CNTS
+};
+
 /// Represents the counter values to wait for in an s_waitcnt instruction.
 ///
 /// Large values (including the maximum possible integer) can be used to
@@ -1091,6 +1112,28 @@ struct Waitcnt {
   unsigned XCnt = ~0u;      // gfx1250.
   unsigned VaVdst = ~0u;    // gfx12+ expert scheduling mode only.
   unsigned VmVsrc = ~0u;    // gfx12+ expert scheduling mode only.
+
+  unsigned &get(InstCounterType T) {
+    // clang-format off
+    switch (T) {
+    case LOAD_CNT:   return LoadCnt;
+    case EXP_CNT:    return ExpCnt;
+    case DS_CNT:     return DsCnt;
+    case STORE_CNT:  return StoreCnt;
+    case SAMPLE_CNT: return SampleCnt;
+    case BVH_CNT:    return BvhCnt;
+    case KM_CNT:     return KmCnt;
+    case X_CNT:      return XCnt;
+    case VA_VDST:    return VaVdst;
+    case VM_VSRC:    return VmVsrc;
+    default:
+      llvm_unreachable("bad InstCounterType");
+    }
+    // clang-format on
+  }
+  unsigned get(InstCounterType T) const {
+    return const_cast<Waitcnt *>(this)->get(T);
+  }
 
   Waitcnt() = default;
   // Pre-gfx12 constructor.
@@ -1143,6 +1186,27 @@ struct HardwareLimits {
   unsigned XcntMax;      // gfx1250.
   unsigned VaVdstMax;    // gfx12+ expert mode only.
   unsigned VmVsrcMax;    // gfx12+ expert mode only.
+
+  // Get the maximum wait count value for a given counter type.
+  unsigned get(InstCounterType T) const {
+    // clang-format off
+    switch (T) {
+    case LOAD_CNT:   return LoadcntMax;
+    case DS_CNT:     return DscntMax;
+    case EXP_CNT:    return ExpcntMax;
+    case STORE_CNT:  return StorecntMax;
+    case SAMPLE_CNT: return SamplecntMax;
+    case BVH_CNT:    return BvhcntMax;
+    case KM_CNT:     return KmcntMax;
+    case X_CNT:      return XcntMax;
+    case VA_VDST:    return VaVdstMax;
+    case VM_VSRC:    return VmVsrcMax;
+    default:
+      // TODO: Shouldn't this be unreachable ?
+      return 0;
+    }
+    // clang-format on
+  }
 
   HardwareLimits() = default;
 
