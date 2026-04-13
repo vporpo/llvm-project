@@ -824,6 +824,8 @@ private:
       /// \returns true if \p Score is older than the first tracked score of
       /// this counter.
       bool obsolete(unsigned Score) const { return Score <= LB; }
+      /// \returns the offset of \p Score from the bottom of the counter.
+      unsigned getOffset(unsigned Score) const { return Score - LB - 1; }
     };
 
     std::array<Counter, AMDGPU::NUM_INST_CNTS> Counters;
@@ -1421,7 +1423,6 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
 
     if (SR != 0) {
       // Print vgpr scores.
-      unsigned LB = getScoreLB(T);
 
       SmallVector<VMEMID> SortedVMEMIDs(VMem.keys());
       sort(SortedVMEMIDs);
@@ -1430,7 +1431,7 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
         unsigned RegScore = VMem.at(ID).Scores[T];
         if (Counters[T].obsolete(RegScore))
           continue;
-        unsigned RelScore = RegScore - LB - 1;
+        unsigned RelScore = Counters[T].getOffset(RegScore);
         if (ID < REGUNITS_END) {
           OS << ' ' << RelScore << ":vRU" << ID;
         } else {
@@ -1448,7 +1449,7 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
           unsigned RegScore = SGPRs.at(ID).get(T);
           if (Counters[T].obsolete(RegScore))
             continue;
-          unsigned RelScore = RegScore - LB - 1;
+          unsigned RelScore = Counters[T].getOffset(RegScore);
           OS << ' ' << RelScore << ":sRU" << static_cast<unsigned>(ID);
         }
       }
