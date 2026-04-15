@@ -708,7 +708,8 @@ public:
 // "s_waitcnt 0" before use.
 class WaitcntBrackets {
 public:
-  WaitcntBrackets(const SIInsertWaitcnts *Context) : Context(Context) {
+  WaitcntBrackets(const SIInsertWaitcnts *Context)
+      : Context(Context), Counters(Context->getLimits()) {
     assert(Context->TRI.getNumRegUnits() < REGUNITS_END);
   }
 
@@ -738,29 +739,108 @@ public:
   }
 
   unsigned getOutstanding(AMDGPU::InstCounterType T) const {
-    return ScoreUBs[T] - ScoreLBs[T];
+    return Counters[T].getCount();
   }
 
   bool hasPendingVMEM(VMEMID ID, AMDGPU::InstCounterType T) const {
-    return getVMemScore(ID, T) > getScoreLB(T);
+    return !Counters[T].obsolete(getVMemScore(ID, T));
   }
 
   /// \Return true if we have no score entries for counter \p T.
   bool empty(AMDGPU::InstCounterType T) const { return getScoreRange(T) == 0; }
 
 private:
-  unsigned getScoreLB(AMDGPU::InstCounterType T) const {
-    assert(T < AMDGPU::NUM_INST_CNTS);
-    return ScoreLBs[T];
-  }
+  struct MergeInfo;
+  /// A container that holds all counters.
+  class AllCounters {
+    friend struct MergeInfo;
+    /// A counter of a specific InstCounterType. Whenever this pass visits an
+    /// instruction that affects this counter type we "increment" the counter.
+    /// Conceptually the counter implements the value of the corresponding
+    /// AMDGPU hardware counter if none of the outstanding instructions that
+    /// affect this counter had completed. When a wait for this counter is
+    /// emitted then we "decrement" (or zero) the counter.
+    class Counter {
+      AMDGPU::InstCounterType CntT;
+      const AMDGPU::HardwareLimits *Limits = nullptr;
+      unsigned LB = 0;
+      unsigned UB = 0;
+      void setUB(unsigned NewUB) {
+        UB = NewUB;
+        if (CntT == AMDGPU::EXP_CNT) {
+          if (getCount() > getWaitCountMax(*Limits, AMDGPU::EXP_CNT))
+            LB = UB - getWaitCountMax(*Limits, AMDGPU::EXP_CNT);
+        }
+      }
 
-  unsigned getScoreUB(AMDGPU::InstCounterType T) const {
-    assert(T < AMDGPU::NUM_INST_CNTS);
-    return ScoreUBs[T];
-  }
+    public:
+      Counter() = default;
+      Counter(AMDGPU::InstCounterType CntT,
+              const AMDGPU::HardwareLimits &Limits)
+          : CntT(CntT), Limits(&Limits) {}
+      /// \returns the count of outstanding instrs tracked by this counter.
+      unsigned getCount() const { return UB - LB; }
+      /// \returns how much we should wait for the instruction corresponding to
+      /// \p Score to complete, assuming in-order completion.
+      unsigned getWait(unsigned Score) const { return UB - Score; }
+      // TODO: Make private: we should not provide raw access to the internals.
+      unsigned getUB() const { return UB; }
+      /// Merge \p Other into this counter. This sets this counter to the
+      /// maximum counter value of this and \p Other.
+      /// \returns the pair of score shifts for this and \p Other.
+      std::pair<unsigned, unsigned> merge(const Counter &Other) {
+        unsigned NewUB = LB + std::max(getCount(), Other.getCount());
+        if (NewUB < LB)
+          report_fatal_error("waitcnt score overflow");
+        unsigned MyShift = NewUB - UB;
+        unsigned OtherShift = NewUB - Other.UB;
+        UB = NewUB;
+        return {MyShift, OtherShift};
+      }
+      /// \returns true if the counter includes \p Score, i.e., it has
+      /// contributed to its current value, or in other words it is pending.
+      bool contains(unsigned Score) const { return LB < Score && Score <= UB; }
+      /// Increment the counter.
+      unsigned advance() {
+        // We are setting the value with setUB() to make sure it goes through
+        // the EXP_CNT limit enforcing code.
+        setUB(UB + 1);
+        if (UB == 0)
+          report_fatal_error("InsertWaitcnt score wraparound");
+        return UB;
+      }
+      /// Sets the counter to its maximum value.
+      void setToMax() {
+        unsigned Max = getWaitCountMax(*Limits, CntT);
+        setUB(UB + Max);
+      }
+      /// Drop all oldest scores except \p Remaining.
+      void dropOldest(unsigned Remaining = 0) {
+        LB = std::max(LB, UB - Remaining);
+      }
+      void clear() { LB = UB; }
+      /// \returns true if \p Score is older than the first tracked score of
+      /// this counter.
+      bool obsolete(unsigned Score) const { return Score <= LB; }
+      /// \returns the offset of \p Score from the bottom of the counter.
+      unsigned getOffset(unsigned Score) const { return Score - LB - 1; }
+      /// \returns true if \p Score matches the top of the counter.
+      bool isCurrent(unsigned Score) const { return Score >= UB; }
+    };
+
+    std::array<Counter, AMDGPU::NUM_INST_CNTS> Counters;
+
+  public:
+    explicit AllCounters(const AMDGPU::HardwareLimits &Limits) {
+      for (AMDGPU::InstCounterType CntT : AMDGPU::inst_counter_types())
+        Counters[(int)CntT] = Counter(CntT, Limits);
+    }
+    Counter &operator[](unsigned Idx) { return Counters[Idx]; }
+    const Counter &operator[](unsigned Idx) const { return Counters[Idx]; }
+  };
 
   unsigned getScoreRange(AMDGPU::InstCounterType T) const {
-    return getScoreUB(T) - getScoreLB(T);
+    return Counters[T].getCount();
   }
 
   unsigned getSGPRScore(MCRegUnit RU, AMDGPU::InstCounterType T) const {
@@ -820,28 +900,25 @@ public:
   }
 
   bool hasPendingFlat() const {
-    return ((LastFlatDsCnt > ScoreLBs[AMDGPU::DS_CNT] &&
-             LastFlatDsCnt <= ScoreUBs[AMDGPU::DS_CNT]) ||
-            (LastFlatLoadCnt > ScoreLBs[AMDGPU::LOAD_CNT] &&
-             LastFlatLoadCnt <= ScoreUBs[AMDGPU::LOAD_CNT]));
+    return Counters[AMDGPU::DS_CNT].contains(LastFlatDsCnt) ||
+           Counters[AMDGPU::LOAD_CNT].contains(LastFlatLoadCnt);
   }
 
   void setPendingFlat() {
-    LastFlatLoadCnt = ScoreUBs[AMDGPU::LOAD_CNT];
-    LastFlatDsCnt = ScoreUBs[AMDGPU::DS_CNT];
+    LastFlatLoadCnt = Counters[AMDGPU::LOAD_CNT].getUB();
+    LastFlatDsCnt = Counters[AMDGPU::DS_CNT].getUB();
   }
 
   bool hasPendingGDS() const {
-    return LastGDS > ScoreLBs[AMDGPU::DS_CNT] &&
-           LastGDS <= ScoreUBs[AMDGPU::DS_CNT];
+    return Counters[AMDGPU::DS_CNT].contains(LastGDS);
   }
 
   unsigned getPendingGDSWait() const {
-    return std::min(getScoreUB(AMDGPU::DS_CNT) - LastGDS,
+    return std::min(Counters[AMDGPU::DS_CNT].getWait(LastGDS),
                     getWaitCountMax(Context->getLimits(), AMDGPU::DS_CNT) - 1);
   }
 
-  void setPendingGDS() { LastGDS = ScoreUBs[AMDGPU::DS_CNT]; }
+  void setPendingGDS() { LastGDS = Counters[AMDGPU::DS_CNT].getUB(); }
 
   // Return true if there might be pending writes to the vgpr-interval by VMEM
   // instructions with types different from V.
@@ -865,9 +942,7 @@ public:
   }
 
   void setStateOnFunctionEntryOrReturn() {
-    setScoreUB(AMDGPU::STORE_CNT,
-               getScoreUB(AMDGPU::STORE_CNT) +
-                   getWaitCountMax(Context->getLimits(), AMDGPU::STORE_CNT));
+    Counters[AMDGPU::STORE_CNT].setToMax();
     PendingEvents |= Context->getWaitEvents(AMDGPU::STORE_CNT);
   }
 
@@ -888,8 +963,8 @@ public:
 
 private:
   struct MergeInfo {
-    unsigned OldLB;
-    unsigned OtherLB;
+    const AllCounters::Counter* Counter;
+    const AllCounters::Counter* OtherCounter;
     unsigned MyShift;
     unsigned OtherShift;
   };
@@ -913,25 +988,6 @@ private:
     if (Size == 16 && Context->ST.hasD16Writes32BitVgpr())
       Reg = Context->TRI.get32BitRegister(Reg);
     return Context->TRI.regunits(Reg);
-  }
-
-  void setScoreLB(AMDGPU::InstCounterType T, unsigned Val) {
-    assert(T < AMDGPU::NUM_INST_CNTS);
-    ScoreLBs[T] = Val;
-  }
-
-  void setScoreUB(AMDGPU::InstCounterType T, unsigned Val) {
-    assert(T < AMDGPU::NUM_INST_CNTS);
-    ScoreUBs[T] = Val;
-
-    if (T != AMDGPU::EXP_CNT)
-      return;
-
-    if (getScoreRange(AMDGPU::EXP_CNT) >
-        getWaitCountMax(Context->getLimits(), AMDGPU::EXP_CNT))
-      ScoreLBs[AMDGPU::EXP_CNT] =
-          ScoreUBs[AMDGPU::EXP_CNT] -
-          getWaitCountMax(Context->getLimits(), AMDGPU::EXP_CNT);
   }
 
   void setRegScore(MCPhysReg Reg, AMDGPU::InstCounterType T, unsigned Val) {
@@ -958,8 +1014,8 @@ private:
 
   const SIInsertWaitcnts *Context;
 
-  unsigned ScoreLBs[AMDGPU::NUM_INST_CNTS] = {0};
-  unsigned ScoreUBs[AMDGPU::NUM_INST_CNTS] = {0};
+  AllCounters Counters;
+
   WaitEventSet PendingEvents;
   // Remember the last flat memory operation.
   unsigned LastFlatDsCnt = 0;
@@ -1100,15 +1156,11 @@ void WaitcntBrackets::updateByEvent(WaitEventType E, MachineInstr &Inst) {
   AMDGPU::InstCounterType T = Context->getCounterFromEvent(E);
   assert(T < Context->MaxCounter);
 
-  unsigned UB = getScoreUB(T);
-  unsigned CurrScore = UB + 1;
-  if (CurrScore == 0)
-    report_fatal_error("InsertWaitcnt score wraparound");
-  // PendingEvents and ScoreUB need to be update regardless if this event
+  unsigned CurrScore = Counters[T].advance();
+  // PendingEvents and ScoreUB need to be updated regardless if this event
   // changes the score of a register or not.
   // Examples including vm_cnt when buffer-store or lgkm_cnt when send-message.
   PendingEvents.insert(E);
-  setScoreUB(T, CurrScore);
 
   const SIRegisterInfo &TRI = Context->TRI;
   const MachineRegisterInfo &MRI = Context->MRI;
@@ -1192,7 +1244,7 @@ void WaitcntBrackets::updateByEvent(WaitEventType E, MachineInstr &Inst) {
       // SMEM and VMEM operations. So there will never be
       // outstanding address translations for both SMEM and
       // VMEM at the same time.
-      setScoreLB(T, getScoreUB(T) - 1);
+      Counters[T].dropOldest(/*Remaining=*/1);
       PendingEvents.remove(OtherEvent);
     }
     for (const MachineOperand &Op : Inst.all_uses())
@@ -1361,16 +1413,15 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
 
     if (SR != 0) {
       // Print vgpr scores.
-      unsigned LB = getScoreLB(T);
 
       SmallVector<VMEMID> SortedVMEMIDs(VMem.keys());
       sort(SortedVMEMIDs);
 
       for (auto ID : SortedVMEMIDs) {
         unsigned RegScore = VMem.at(ID).Scores[T];
-        if (RegScore <= LB)
+        if (Counters[T].obsolete(RegScore))
           continue;
-        unsigned RelScore = RegScore - LB - 1;
+        unsigned RelScore = Counters[T].getOffset(RegScore);
         if (ID < REGUNITS_END) {
           OS << ' ' << RelScore << ":vRU" << ID;
         } else {
@@ -1386,9 +1437,9 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
         sort(SortedSMEMIDs);
         for (auto ID : SortedSMEMIDs) {
           unsigned RegScore = SGPRs.at(ID).get(T);
-          if (RegScore <= LB)
+          if (Counters[T].obsolete(RegScore))
             continue;
-          unsigned RelScore = RegScore - LB - 1;
+          unsigned RelScore = Counters[T].getOffset(RegScore);
           OS << ' ' << RelScore << ":sRU" << static_cast<unsigned>(ID);
         }
       }
@@ -1548,11 +1599,8 @@ void WaitcntBrackets::purgeEmptyTrackingData() {
 void WaitcntBrackets::determineWaitForScore(AMDGPU::InstCounterType T,
                                             unsigned ScoreToWait,
                                             AMDGPU::Waitcnt &Wait) const {
-  const unsigned LB = getScoreLB(T);
-  const unsigned UB = getScoreUB(T);
-
   // If the score falls within the bracket, we need a waitcnt.
-  if ((UB >= ScoreToWait) && (ScoreToWait > LB)) {
+  if (Counters[T].contains(ScoreToWait)) {
     if ((T == AMDGPU::LOAD_CNT || T == AMDGPU::DS_CNT) && hasPendingFlat() &&
         !Context->ST.hasFlatLgkmVMemCountInOrder()) {
       // If there is a pending FLAT operation, and this is a VMem or LGKM
@@ -1567,8 +1615,9 @@ void WaitcntBrackets::determineWaitForScore(AMDGPU::InstCounterType T,
     } else {
       // If a counter has been maxed out avoid overflow by waiting for
       // MAX(CounterType) - 1 instead.
-      unsigned NeededWait = std::min(
-          UB - ScoreToWait, getWaitCountMax(Context->getLimits(), T) - 1);
+      unsigned NeededWait =
+          std::min(Counters[T].getWait(ScoreToWait),
+                   getWaitCountMax(Context->getLimits(), T) - 1);
       addWait(Wait, T, NeededWait);
     }
   }
@@ -1647,9 +1696,8 @@ void WaitcntBrackets::tryClearSCCWriteEvent(MachineInstr *Inst) {
     WaitEventSet SCC_WRITE_PendingEvent(SCC_WRITE);
     // If this SCC_WRITE is the only pending KM_CNT event, clear counter.
     if ((PendingEvents & Context->getWaitEvents(AMDGPU::KM_CNT)) ==
-        SCC_WRITE_PendingEvent) {
-      setScoreLB(AMDGPU::KM_CNT, getScoreUB(AMDGPU::KM_CNT));
-    }
+        SCC_WRITE_PendingEvent)
+      Counters[AMDGPU::KM_CNT].clear();
 
     PendingEvents.remove(SCC_WRITE_PendingEvent);
     PendingSCCWrite = nullptr;
@@ -1662,15 +1710,14 @@ void WaitcntBrackets::applyWaitcnt(const AMDGPU::Waitcnt &Wait) {
 }
 
 void WaitcntBrackets::applyWaitcnt(AMDGPU::InstCounterType T, unsigned Count) {
-  const unsigned UB = getScoreUB(T);
-  if (Count >= UB)
+  if (Counters[T].isCurrent(Count))
     return;
   if (Count != 0) {
     if (counterOutOfOrder(T))
       return;
-    setScoreLB(T, std::max(getScoreLB(T), UB - Count));
+    Counters[T].dropOldest(Count);
   } else {
-    setScoreLB(T, UB);
+    Counters[T].clear();
     PendingEvents.remove(Context->getWaitEvents(T));
   }
 
@@ -2999,11 +3046,11 @@ void SIInsertWaitcnts::updateEventWaitcntAfter(MachineInstr &Inst,
   }
 }
 
-bool WaitcntBrackets::mergeScore(const MergeInfo &M, unsigned &Score,
-                                 unsigned OtherScore) {
-  unsigned MyShifted = Score <= M.OldLB ? 0 : Score + M.MyShift;
+bool WaitcntBrackets::mergeScore(const MergeInfo &M,
+                                 unsigned &Score, unsigned OtherScore) {
+  unsigned MyShifted = M.Counter->obsolete(Score) ? 0 : Score + M.MyShift;
   unsigned OtherShifted =
-      OtherScore <= M.OtherLB ? 0 : OtherScore + M.OtherShift;
+      M.OtherCounter->obsolete(OtherScore) ? 0 : OtherScore + M.OtherShift;
   Score = std::max(MyShifted, OtherShifted);
   return OtherShifted > MyShifted;
 }
@@ -3101,19 +3148,11 @@ bool WaitcntBrackets::merge(const WaitcntBrackets &Other) {
     PendingEvents |= OtherEvents;
 
     // Merge scores for this counter
-    const unsigned MyPending = ScoreUBs[T] - ScoreLBs[T];
-    const unsigned OtherPending = Other.ScoreUBs[T] - Other.ScoreLBs[T];
-    const unsigned NewUB = ScoreLBs[T] + std::max(MyPending, OtherPending);
-    if (NewUB < ScoreLBs[T])
-      report_fatal_error("waitcnt score overflow");
-
     MergeInfo &M = MergeInfos[T];
-    M.OldLB = ScoreLBs[T];
-    M.OtherLB = Other.ScoreLBs[T];
-    M.MyShift = NewUB - ScoreUBs[T];
-    M.OtherShift = NewUB - Other.ScoreUBs[T];
+    M.Counter = &Counters[T];
+    M.OtherCounter = &Other.Counters[T];
 
-    ScoreUBs[T] = NewUB;
+    std::tie(M.MyShift, M.OtherShift) = Counters[T].merge(Other.Counters[T]);
 
     if (T == AMDGPU::LOAD_CNT)
       StrictDom |= mergeScore(M, LastFlatLoadCnt, Other.LastFlatLoadCnt);
