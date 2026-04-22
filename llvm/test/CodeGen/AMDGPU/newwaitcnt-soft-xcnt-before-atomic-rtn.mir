@@ -1,0 +1,32 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# At function entry there is no pending SMEM, so the soft S_WAIT_XCNT_soft 0 ahead
+# of the atomic is redundant and must be removed (the old pass removes it). The new
+# pass must not keep a spurious s_wait_xcnt 0x0.
+
+---
+name: soft_xcnt_before_atomic_rtn
+tracksRegLiveness: true
+body: |
+  ; CHECK-LABEL: name: soft_xcnt_before_atomic_rtn
+  ; CHECK: GLOBAL_WB
+  ; CHECK-NOT: S_WAIT_XCNT
+  ; CHECK: GLOBAL_ATOMIC_ADD_F64_RTN
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3
+
+    renamable $vgpr2_vgpr3 = V_MOV_B64_e32 4616189618054758400, implicit $exec
+    S_WAIT_LOADCNT_soft 0
+    S_WAIT_STORECNT_soft 0
+    GLOBAL_WB 24, implicit $exec
+    S_WAIT_LOADCNT_soft 0
+    S_WAIT_STORECNT_soft 0
+    S_WAIT_DSCNT_soft 0
+    S_WAIT_XCNT_soft 0
+    renamable $vgpr0_vgpr1 = GLOBAL_ATOMIC_ADD_F64_RTN killed renamable $vgpr0_vgpr1, killed renamable $vgpr2_vgpr3, 0, 25, implicit $exec :: (load store seq_cst (s64) on `ptr addrspace(1) poison`, addrspace 1)
+    S_WAIT_LOADCNT_soft 0
+    GLOBAL_INV 24, implicit $exec
+    S_WAIT_LOADCNT_soft 0
+    S_SETPC_B64_return undef $sgpr30_sgpr31, implicit killed $vgpr0, implicit killed $vgpr1
+...

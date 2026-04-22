@@ -1,0 +1,34 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Test that WAIT_ASYNCMARK in a loop produces the correct vmcnt value.
+# With 2 outstanding async DMA operations, WAIT_ASYNCMARK(1) should emit vmcnt(1).
+
+# CHECK-LABEL: name: asyncmark_loop
+# CHECK-LABEL: bb.1:
+# CHECK: WAIT_ASYNCMARK 1
+# CHECK-NEXT: S_WAITCNT {{.*}}Vmcnt_1
+---
+name: asyncmark_loop
+tracksRegLiveness: false
+body: |
+  bb.0:
+    successors: %bb.1
+
+    $m0 = S_MOV_B32 $sgpr0
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    S_BRANCH %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    WAIT_ASYNCMARK 1, implicit $exec
+    S_CBRANCH_SCC1 %bb.1, implicit $scc
+    S_BRANCH %bb.2
+
+  bb.2:
+    S_ENDPGM 0
+...

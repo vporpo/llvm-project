@@ -1155,6 +1155,10 @@ unsigned getBvhcntBitMask(const IsaVersion &Version);
 /// Returns 0 for versions that do not support Asynccnt
 unsigned getAsynccntBitMask(const IsaVersion &Version);
 
+/// \returns Tensorcnt bit mask for given isa \p Version.
+/// Returns 0 for versions that do not support Tensorcnt
+unsigned getTensorcntBitMask(const IsaVersion &Version);
+
 /// \returns Dscnt bit mask for given isa \p Version.
 /// Returns 0 for versions that do not support DScnt
 unsigned getDscntBitMask(const IsaVersion &Version);

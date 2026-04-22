@@ -1,0 +1,273 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test Counter::isNonZeroWaitLegal() for XCNT (address translation counter).
+#
+# XCNT is only available on gfx1250+ and tracks address register consumption
+# for VMEM/SMEM operations. Address translation completes in order, so
+# position-based waits (xcnt > 0) are always legal.
+#
+# These tests verify WAR (Write-After-Read) hazards on address registers:
+#   Def (memory op that reads an address register)
+#   Filler (another memory op - increments xcnt)
+#   Use (instruction that overwrites the address register)
+#
+# ============================================================================
+# Test Summary Table
+# ============================================================================
+#
+# | Test Name                      | Def    | Pending | Filler | xcnt   |
+# |--------------------------------|--------|---------|--------|--------|
+# | vmem_vmem_vmem_war             | GLOBAL | GLOBAL  | GLOBAL | 2      |
+# | vmem_smem_vmem_war             | GLOBAL | SMEM    | GLOBAL | (none) |
+# | smem_vmem_smem_war             | SMEM   | GLOBAL  | SMEM   | (none) |
+# | smem_smem_smem_war             | SMEM   | SMEM    | SMEM   | 0      |
+# | vmem_flat_vmem_war             | GLOBAL | FLAT    | GLOBAL | 2      |
+# | flat_vmem_flat_war             | FLAT   | GLOBAL  | FLAT   | 2      |
+# | vmem_store_war                 | STORE  | STORE   | STORE  | 2      |
+# | vmem_load_store_mix_war        | LOAD   | STORE   | LOAD   | 2      |
+# | vmem_war_with_smem_pending     | GLOBAL | SMEM    | GLOBAL | 1      |
+# | smem_war_with_vmem_pending     | SMEM   | GLOBAL  | SMEM   | 0      |
+#
+# Notes:
+# - XCNT allows position-based waits (xcnt > 0) since address translation
+#   completes in order.
+# - Mixed VMEM+SMEM cases: XCNT wait is implied by LOADCNT/KMCNT waits.
+# - SMEM-only instructions require xcnt 0 (SMEM is out-of-order for XCNT).
+# - vmem_war_with_smem_pending: SMEM pending doesn't affect VMEM ordering.
+#   Position-based waits are legal for VMEM even when SMEM is also pending.
+#
+# ============================================================================
+
+---
+# VMEM → VMEM → VMEM with WAR on address register
+# Three GLOBAL loads, then overwrite address of first load.
+# Expected: xcnt 2 (wait for first load's address consumption)
+name: vmem_vmem_vmem_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3
+    ; CHECK-LABEL: name: vmem_vmem_vmem_war
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK: S_WAIT_XCNT 2
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec   ; Def (uses $vgpr0_vgpr1 as addr)
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec   ; Pending
+    $vgpr12 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 4, 0, implicit $exec   ; Filler
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec                         ; Use (WAR on $vgpr0)
+...
+
+---
+# VMEM → SMEM → VMEM with WAR on address register
+# GLOBAL load, SMEM load (different counter), GLOBAL load, then WAR.
+# XCNT wait is implied by LOADCNT/KMCNT waits, no explicit S_WAIT_XCNT needed.
+name: vmem_smem_vmem_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: vmem_smem_vmem_war
+    ; CHECK: $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: $sgpr2 = S_LOAD_DWORD_IMM
+    ; CHECK: $vgpr11 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK-NOT: S_WAIT_XCNT
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec   ; Def (uses $vgpr0_vgpr1 as addr)
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))     ; Pending (SMEM also uses XCNT)
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec   ; Filler
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec                         ; Use (WAR on $vgpr0)
+...
+
+---
+# SMEM → VMEM → SMEM with WAR on address register
+# SMEM load, VMEM load, SMEM load, then WAR on SMEM address.
+# XCNT wait is implied by LOADCNT/KMCNT waits, no explicit S_WAIT_XCNT needed.
+name: smem_vmem_smem_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1, $sgpr2_sgpr3
+    ; CHECK-LABEL: name: smem_vmem_smem_war
+    ; CHECK: $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK: $vgpr10 = GLOBAL_LOAD_DWORD
+    ; CHECK: $sgpr11 = S_LOAD_DWORD_IMM $sgpr2_sgpr3
+    ; CHECK-NOT: S_WAIT_XCNT
+    ; CHECK: $sgpr0 = S_MOV_B32
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))    ; Def (uses $sgpr0_sgpr1 as addr)
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec   ; Pending (VMEM also uses XCNT)
+    $sgpr11 = S_LOAD_DWORD_IMM $sgpr2_sgpr3, 0, 0 :: (load (s32))    ; Filler
+    $sgpr0 = S_MOV_B32 0                                             ; Use (WAR on $sgpr0)
+...
+
+---
+# SMEM → SMEM → SMEM with WAR on address register
+# Three SMEM loads, then WAR on first load's address.
+# SMEM is out-of-order for XCNT, so xcnt 0 is required.
+name: smem_smem_smem_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr2_sgpr3, $sgpr4_sgpr5
+    ; CHECK-LABEL: name: smem_smem_smem_war
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr2_sgpr3
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr4_sgpr5
+    ; CHECK: S_WAIT_XCNT 0
+    ; CHECK: $sgpr0 = S_MOV_B32
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))    ; Def
+    $sgpr11 = S_LOAD_DWORD_IMM $sgpr2_sgpr3, 0, 0 :: (load (s32))    ; Pending
+    $sgpr12 = S_LOAD_DWORD_IMM $sgpr4_sgpr5, 0, 0 :: (load (s32))    ; Filler
+    $sgpr0 = S_MOV_B32 0                                             ; Use (WAR)
+...
+
+---
+# VMEM → FLAT → VMEM with WAR on address register
+# FLAT also increments XCNT.
+# Expected: xcnt 2
+name: vmem_flat_vmem_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $vgpr4_vgpr5
+    ; CHECK-LABEL: name: vmem_flat_vmem_war
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: FLAT_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr4_vgpr5
+    ; CHECK: S_WAIT_XCNT 2
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec   ; Def
+    $vgpr11 = FLAT_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec, implicit $flat_scr ; Pending
+    $vgpr12 = GLOBAL_LOAD_DWORD $vgpr4_vgpr5, 0, 0, implicit $exec   ; Filler
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec                         ; Use (WAR)
+...
+
+---
+# FLAT → VMEM → FLAT with WAR on address register
+# Expected: xcnt 2
+name: flat_vmem_flat_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $vgpr4_vgpr5
+    ; CHECK-LABEL: name: flat_vmem_flat_war
+    ; CHECK: FLAT_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK: FLAT_LOAD_DWORD $vgpr4_vgpr5
+    ; CHECK: S_WAIT_XCNT 2
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr ; Def
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec   ; Pending
+    $vgpr12 = FLAT_LOAD_DWORD $vgpr4_vgpr5, 0, 0, implicit $exec, implicit $flat_scr ; Filler
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec                         ; Use (WAR)
+...
+
+---
+# VMEM stores also use XCNT for address registers
+# Expected: xcnt 2
+name: vmem_store_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $vgpr4_vgpr5, $vgpr10, $vgpr11, $vgpr12
+    ; CHECK-LABEL: name: vmem_store_war
+    ; CHECK: GLOBAL_STORE_DWORD $vgpr0_vgpr1
+    ; CHECK: GLOBAL_STORE_DWORD $vgpr2_vgpr3
+    ; CHECK: GLOBAL_STORE_DWORD $vgpr4_vgpr5
+    ; CHECK: S_WAIT_XCNT 2
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr10, 0, 0, implicit $exec   ; Def
+    GLOBAL_STORE_DWORD $vgpr2_vgpr3, $vgpr11, 0, 0, implicit $exec   ; Pending
+    GLOBAL_STORE_DWORD $vgpr4_vgpr5, $vgpr12, 0, 0, implicit $exec   ; Filler
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec                         ; Use (WAR)
+...
+
+---
+# Mixed load/store - all increment XCNT
+# Expected: xcnt 2
+name: vmem_load_store_mix_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $vgpr4_vgpr5, $vgpr10
+    ; CHECK-LABEL: name: vmem_load_store_mix_war
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: GLOBAL_STORE_DWORD $vgpr2_vgpr3
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr4_vgpr5
+    ; CHECK: S_WAIT_XCNT 2
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec   ; Def (load)
+    GLOBAL_STORE_DWORD $vgpr2_vgpr3, $vgpr10, 0, 0, implicit $exec   ; Pending (store)
+    $vgpr12 = GLOBAL_LOAD_DWORD $vgpr4_vgpr5, 0, 0, implicit $exec   ; Filler (load)
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec                         ; Use (WAR)
+...
+
+---
+# VMEM WAR with unrelated SMEM pending on XCNT (multi-block)
+# SMEM pending doesn't affect VMEM ordering - position-based waits are legal.
+# Expected: xcnt 1 (not xcnt 0)
+# This test uses multiple blocks to match the pattern in pending_vmem_event_between_block.
+name: vmem_war_with_smem_pending
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: vmem_war_with_smem_pending
+  ; CHECK: bb.0:
+  ; CHECK:   $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+  ; CHECK:   S_CBRANCH_SCC1 %bb.2
+  ; CHECK: bb.1:
+  ; CHECK:   $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+  ; CHECK:   $vgpr5 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+  ; CHECK: bb.2:
+  ; CHECK:   S_WAIT_KMCNT 0
+  ; CHECK-NEXT: $sgpr2 = S_MOV_B32 $sgpr2
+  ; CHECK-NEXT: S_WAIT_XCNT 1
+  ; CHECK-NEXT: $vgpr1 = V_MOV_B32_e32 0
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1, $scc
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0
+    S_CBRANCH_SCC1 %bb.2, implicit $scc
+  bb.1:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $sgpr2
+    $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr5 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+  bb.2:
+    liveins: $sgpr0_sgpr1, $sgpr2, $vgpr1
+    $sgpr2 = S_MOV_B32 $sgpr2
+    $vgpr1 = V_MOV_B32_e32 0, implicit $exec
+...
+
+---
+# SMEM WAR with unrelated VMEM pending on XCNT (multi-block)
+# SMEM is out-of-order, so xcnt 0 is required regardless of VMEM pending.
+# Expected: xcnt 0
+name: smem_war_with_vmem_pending
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: smem_war_with_vmem_pending
+  ; CHECK: bb.0:
+  ; CHECK:   $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+  ; CHECK:   S_CBRANCH_SCC1 %bb.2
+  ; CHECK: bb.1:
+  ; CHECK:   $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+  ; CHECK:   $sgpr3 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+  ; CHECK: bb.2:
+  ; CHECK:   S_WAIT_XCNT 0
+  ; CHECK-NEXT: $sgpr0 = S_MOV_B32 0
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1, $scc
+    $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    S_CBRANCH_SCC1 %bb.2, implicit $scc
+  bb.1:
+    liveins: $sgpr0_sgpr1
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0
+    $sgpr3 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 4, 0
+  bb.2:
+    liveins: $sgpr0_sgpr1
+    $sgpr0 = S_MOV_B32 0
+...

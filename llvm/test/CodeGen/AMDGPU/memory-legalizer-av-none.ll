@@ -24,18 +24,18 @@ define amdgpu_kernel void @workgroup_acq_rel_fence_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: workgroup_acq_rel_fence_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: workgroup_acq_rel_fence_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence syncscope("workgroup") acq_rel, !mmra !0
@@ -55,18 +55,18 @@ define amdgpu_kernel void @cluster_seq_cst_fence_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: cluster_seq_cst_fence_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: cluster_seq_cst_fence_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence syncscope("cluster") seq_cst, !mmra !0
@@ -86,14 +86,14 @@ define amdgpu_kernel void @agent_acquire_fence_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: agent_acquire_fence_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: agent_acquire_fence_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence syncscope("agent") acquire, !mmra !0
@@ -113,18 +113,18 @@ define amdgpu_kernel void @agent_release_fence_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: agent_release_fence_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: agent_release_fence_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence syncscope("agent") release, !mmra !0
@@ -144,18 +144,18 @@ define amdgpu_kernel void @system_seq_cst_fence_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: system_seq_cst_fence_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: system_seq_cst_fence_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence seq_cst, !mmra !0
@@ -187,11 +187,11 @@ define i32 @workgroup_acquire_load_av_none(ptr addrspace(1) %ptr) #0 {
 ;
 ; GFX12-WGP-LABEL: workgroup_acquire_load_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v2, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v2
@@ -201,11 +201,11 @@ define i32 @workgroup_acquire_load_av_none(ptr addrspace(1) %ptr) #0 {
 ;
 ; GFX12-CU-LABEL: workgroup_acquire_load_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v2, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v2
@@ -240,11 +240,11 @@ define i32 @agent_acquire_load_av_none(ptr addrspace(1) %ptr) #0 {
 ;
 ; GFX12-WGP-LABEL: agent_acquire_load_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v2, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v2
@@ -254,11 +254,11 @@ define i32 @agent_acquire_load_av_none(ptr addrspace(1) %ptr) #0 {
 ;
 ; GFX12-CU-LABEL: agent_acquire_load_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v2, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v2
@@ -293,11 +293,11 @@ define i32 @system_acquire_load_av_none(ptr addrspace(1) %ptr) #0 {
 ;
 ; GFX12-WGP-LABEL: system_acquire_load_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v2, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v2
@@ -307,11 +307,11 @@ define i32 @system_acquire_load_av_none(ptr addrspace(1) %ptr) #0 {
 ;
 ; GFX12-CU-LABEL: system_acquire_load_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v2, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v2
@@ -350,35 +350,35 @@ define void @workgroup_release_store_av_none(ptr addrspace(1) %ptr, i32 %val) #0
 ;
 ; GFX12-WGP-LABEL: workgroup_release_store_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    global_store_b32 v[0:1], v2, off scope:SCOPE_SE
 ; GFX12-WGP-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX12-CU-LABEL: workgroup_release_store_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    global_store_b32 v[0:1], v2, off
 ; GFX12-CU-NEXT:    s_setpc_b64 s[30:31]
 entry:
@@ -411,35 +411,35 @@ define void @agent_release_store_av_none(ptr addrspace(1) %ptr, i32 %val) #0 {
 ;
 ; GFX12-WGP-LABEL: agent_release_store_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    global_store_b32 v[0:1], v2, off scope:SCOPE_DEV
 ; GFX12-WGP-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX12-CU-LABEL: agent_release_store_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    global_store_b32 v[0:1], v2, off scope:SCOPE_DEV
 ; GFX12-CU-NEXT:    s_setpc_b64 s[30:31]
 entry:
@@ -472,35 +472,35 @@ define void @system_release_store_av_none(ptr addrspace(1) %ptr, i32 %val) #0 {
 ;
 ; GFX12-WGP-LABEL: system_release_store_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    global_store_b32 v[0:1], v2, off scope:SCOPE_SYS
 ; GFX12-WGP-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX12-CU-LABEL: system_release_store_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    global_store_b32 v[0:1], v2, off scope:SCOPE_SYS
 ; GFX12-CU-NEXT:    s_setpc_b64 s[30:31]
 entry:
@@ -535,36 +535,36 @@ define i32 @agent_acq_rel_atomicrmw_av_none(ptr addrspace(1) %ptr, i32 %val) #0 
 ;
 ; GFX12-WGP-LABEL: agent_acq_rel_atomicrmw_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    global_atomic_add_u32 v0, v[0:1], v2, off th:TH_ATOMIC_RETURN scope:SCOPE_DEV
 ; GFX12-WGP-NEXT:    s_wait_loadcnt 0x0
 ; GFX12-WGP-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX12-CU-LABEL: agent_acq_rel_atomicrmw_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    global_atomic_add_u32 v0, v[0:1], v2, off th:TH_ATOMIC_RETURN scope:SCOPE_DEV
 ; GFX12-CU-NEXT:    s_wait_loadcnt 0x0
 ; GFX12-CU-NEXT:    s_setpc_b64 s[30:31]
@@ -598,36 +598,36 @@ define i32 @system_seq_cst_atomicrmw_av_none(ptr addrspace(1) %ptr, i32 %val) #0
 ;
 ; GFX12-WGP-LABEL: system_seq_cst_atomicrmw_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    global_atomic_add_u32 v0, v[0:1], v2, off th:TH_ATOMIC_RETURN scope:SCOPE_SYS
 ; GFX12-WGP-NEXT:    s_wait_loadcnt 0x0
 ; GFX12-WGP-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX12-CU-LABEL: system_seq_cst_atomicrmw_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v3
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    global_atomic_add_u32 v0, v[0:1], v2, off th:TH_ATOMIC_RETURN scope:SCOPE_SYS
 ; GFX12-CU-NEXT:    s_wait_loadcnt 0x0
 ; GFX12-CU-NEXT:    s_setpc_b64 s[30:31]
@@ -673,20 +673,20 @@ define { i32, i1 } @cluster_acq_rel_cmpxchg_av_none(ptr addrspace(1) %ptr, i32 %
 ;
 ; GFX12-WGP-LABEL: cluster_acq_rel_cmpxchg_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-WGP-NEXT:    s_wait_expcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_kmcnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_expcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_kmcnt 0x0
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v4, v1
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v1, v4
 ; GFX12-WGP-NEXT:    ; kill: def $vgpr3 killed $vgpr3 def $vgpr3_vgpr4 killed $exec
 ; GFX12-WGP-NEXT:    v_mov_b32_e32 v4, v2
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-WGP-NEXT:    global_atomic_cmpswap_b32 v0, v[0:1], v[3:4], off th:TH_ATOMIC_RETURN scope:SCOPE_DEV
 ; GFX12-WGP-NEXT:    s_wait_loadcnt 0x0
 ; GFX12-WGP-NEXT:    v_cmp_eq_u32_e64 s0, v0, v2
@@ -696,20 +696,20 @@ define { i32, i1 } @cluster_acq_rel_cmpxchg_av_none(ptr addrspace(1) %ptr, i32 %
 ;
 ; GFX12-CU-LABEL: cluster_acq_rel_cmpxchg_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX12-CU-NEXT:    s_wait_expcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_kmcnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_expcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_kmcnt 0x0
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v4, v1
 ; GFX12-CU-NEXT:    ; kill: def $vgpr0 killed $vgpr0 def $vgpr0_vgpr1 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v1, v4
 ; GFX12-CU-NEXT:    ; kill: def $vgpr3 killed $vgpr3 def $vgpr3_vgpr4 killed $exec
 ; GFX12-CU-NEXT:    v_mov_b32_e32 v4, v2
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-CU-NEXT:    global_atomic_cmpswap_b32 v0, v[0:1], v[3:4], off th:TH_ATOMIC_RETURN scope:SCOPE_DEV
 ; GFX12-CU-NEXT:    s_wait_loadcnt 0x0
 ; GFX12-CU-NEXT:    v_cmp_eq_u32_e64 s0, v0, v2
@@ -738,18 +738,18 @@ define amdgpu_kernel void @agent_acq_rel_fence_syncas_global_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: agent_acq_rel_fence_syncas_global_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: agent_acq_rel_fence_syncas_global_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence syncscope("agent") acq_rel, !mmra !1
@@ -769,18 +769,18 @@ define amdgpu_kernel void @system_seq_cst_fence_syncas_global_av_none() #0 {
 ;
 ; GFX12-WGP-LABEL: system_seq_cst_fence_syncas_global_av_none:
 ; GFX12-WGP:       ; %bb.0: ; %entry
-; GFX12-WGP-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_samplecnt 0x0
-; GFX12-WGP-NEXT:    s_wait_loadcnt 0x0
-; GFX12-WGP-NEXT:    s_wait_storecnt 0x0
+; GFX12-WGP-DAG:     s_wait_bvhcnt 0x0
+; GFX12-WGP-DAG:     s_wait_samplecnt 0x0
+; GFX12-WGP-DAG:     s_wait_loadcnt 0x0
+; GFX12-WGP-DAG:     s_wait_storecnt 0x0
 ; GFX12-WGP-NEXT:    s_endpgm
 ;
 ; GFX12-CU-LABEL: system_seq_cst_fence_syncas_global_av_none:
 ; GFX12-CU:       ; %bb.0: ; %entry
-; GFX12-CU-NEXT:    s_wait_bvhcnt 0x0
-; GFX12-CU-NEXT:    s_wait_samplecnt 0x0
-; GFX12-CU-NEXT:    s_wait_loadcnt 0x0
-; GFX12-CU-NEXT:    s_wait_storecnt 0x0
+; GFX12-CU-DAG:     s_wait_bvhcnt 0x0
+; GFX12-CU-DAG:     s_wait_samplecnt 0x0
+; GFX12-CU-DAG:     s_wait_loadcnt 0x0
+; GFX12-CU-DAG:     s_wait_storecnt 0x0
 ; GFX12-CU-NEXT:    s_endpgm
 entry:
   fence seq_cst, !mmra !1

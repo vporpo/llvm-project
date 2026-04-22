@@ -1,0 +1,19 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test that XCnt is waited for when overwriting SMEM address registers.
+#
+# BUG: New pass skips XCnt, assuming it's implied by KmCnt/LoadCnt.
+
+# CHECK-LABEL: name: xcnt_smem_addr_overwrite
+# CHECK: S_LOAD_DWORD_IMM
+# CHECK-NEXT: S_WAIT_XCNT 0
+# CHECK-NEXT: S_MOV_B32 0
+
+---
+name: xcnt_smem_addr_overwrite
+body: |
+  bb.0:
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0
+    $sgpr0 = S_MOV_B32 0
+...

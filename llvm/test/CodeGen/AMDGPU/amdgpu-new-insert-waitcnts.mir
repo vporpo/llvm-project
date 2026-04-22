@@ -1,0 +1,12 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1200 -passes="amdgpu-new-insert-waitcnts" -debug-pass-manager -filetype=null %s 2>&1 | FileCheck %s
+
+# Test that AMDGPUNewInsertWaitcntsPass runs.
+
+# CHECK: Running pass: AMDGPUNewInsertWaitcntsPass on test
+
+---
+name: test
+body: |
+  bb.0:
+    S_ENDPGM 0
+...

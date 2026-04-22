@@ -1,0 +1,530 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s -check-prefix=OLD
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s -check-prefix=NEW
+
+# Test matrix of dependency types (RAW, WAW, WAR) across different memory
+# operations and counters. Each function is a minimal 2-instruction test case.
+
+#############################################################################
+# VMEM LOAD - RAW (LoadCnt)
+#############################################################################
+
+# OLD-LABEL: name: vmem_load_raw
+# OLD: GLOBAL_LOAD_DWORD
+# OLD-NEXT: S_WAIT_LOADCNT 0
+# OLD-NEXT: V_ADD_U32
+
+# NEW-LABEL: name: vmem_load_raw
+# NEW: GLOBAL_LOAD_DWORD
+# NEW-NEXT: S_WAIT_LOADCNT 0
+# NEW-NEXT: V_ADD_U32
+
+---
+name: vmem_load_raw
+body: |
+  bb.0:
+    ; RAW: Load writes $vgpr0, then we read $vgpr0
+    $vgpr0 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+    $vgpr4 = V_ADD_U32_e32 $vgpr0, $vgpr0, implicit $exec
+...
+
+#############################################################################
+# VMEM LOAD - WAW (LoadCnt)
+#############################################################################
+
+# OLD-LABEL: name: vmem_load_waw
+# OLD: GLOBAL_LOAD_DWORD
+# OLD-NEXT: S_WAIT_LOADCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: vmem_load_waw
+# NEW: GLOBAL_LOAD_DWORD
+# NEW-NEXT: S_WAIT_LOADCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: vmem_load_waw
+body: |
+  bb.0:
+    ; WAW: Load writes $vgpr0, then MOV writes $vgpr0
+    $vgpr0 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# VMEM LOAD - WAR (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: vmem_load_war_addr
+# OLD: GLOBAL_LOAD_DWORD
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: vmem_load_war_addr
+# NEW: GLOBAL_LOAD_DWORD
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: vmem_load_war_addr
+body: |
+  bb.0:
+    ; WAR: Load reads $vgpr2_vgpr3 as address, then we overwrite $vgpr2
+    $vgpr0 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# SMEM LOAD - RAW (KmCnt)
+#############################################################################
+
+# OLD-LABEL: name: smem_load_raw
+# OLD: S_LOAD_DWORD_IMM
+# OLD-NEXT: S_WAIT_KMCNT 0
+# OLD-NEXT: S_ADD_U32
+
+# NEW-LABEL: name: smem_load_raw
+# NEW: S_LOAD_DWORD_IMM
+# NEW-NEXT: S_WAIT_KMCNT 0
+# NEW-NEXT: S_ADD_U32
+
+---
+name: smem_load_raw
+body: |
+  bb.0:
+    ; RAW: Load writes $sgpr0, then we read $sgpr0
+    $sgpr0 = S_LOAD_DWORD_IMM $sgpr2_sgpr3, 0, 0
+    $sgpr4 = S_ADD_U32 $sgpr0, $sgpr0, implicit-def $scc
+...
+
+#############################################################################
+# SMEM LOAD - WAW (KmCnt)
+#############################################################################
+
+# OLD-LABEL: name: smem_load_waw
+# OLD: S_LOAD_DWORD_IMM
+# OLD-NEXT: S_WAIT_KMCNT 0
+# OLD-NEXT: S_MOV_B32
+
+# NEW-LABEL: name: smem_load_waw
+# NEW: S_LOAD_DWORD_IMM
+# NEW-NEXT: S_WAIT_KMCNT 0
+# NEW-NEXT: S_MOV_B32
+
+---
+name: smem_load_waw
+body: |
+  bb.0:
+    ; WAW: Load writes $sgpr0, then MOV writes $sgpr0
+    $sgpr0 = S_LOAD_DWORD_IMM $sgpr2_sgpr3, 0, 0
+    $sgpr0 = S_MOV_B32 0
+...
+
+#############################################################################
+# SMEM LOAD - WAR (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: smem_load_war_addr
+# OLD: S_LOAD_DWORD_IMM
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: S_MOV_B32
+
+# NEW-LABEL: name: smem_load_war_addr
+# NEW: S_LOAD_DWORD_IMM
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: S_MOV_B32
+
+---
+name: smem_load_war_addr
+body: |
+  bb.0:
+    ; WAR: Load reads $sgpr0_sgpr1 as address, then we overwrite $sgpr0
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0
+    $sgpr0 = S_MOV_B32 0
+...
+
+#############################################################################
+# VMEM STORE - WAR address (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: vmem_store_war_addr
+# OLD: GLOBAL_STORE_DWORD
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: vmem_store_war_addr
+# NEW: GLOBAL_STORE_DWORD
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: vmem_store_war_addr
+body: |
+  bb.0:
+    ; WAR: Store reads $vgpr0_vgpr1 as address, then we overwrite $vgpr0
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# VMEM STORE - WAR data (XCnt - conservative)
+#############################################################################
+
+# OLD-LABEL: name: vmem_store_war_data
+# OLD: GLOBAL_STORE_DWORD
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: vmem_store_war_data
+# NEW: GLOBAL_STORE_DWORD
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: vmem_store_war_data
+body: |
+  bb.0:
+    ; WAR: Store reads $vgpr2 as data, then we overwrite $vgpr2
+    ; Note: Data is consumed at dispatch, so XCnt wait may be conservative
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# DS READ - RAW (DsCnt)
+#############################################################################
+
+# OLD-LABEL: name: ds_read_raw
+# OLD: DS_READ_B32_gfx9
+# OLD-NEXT: S_WAIT_DSCNT 0
+# OLD-NEXT: V_ADD_U32
+
+# NEW-LABEL: name: ds_read_raw
+# NEW: DS_READ_B32_gfx9
+# NEW-NEXT: S_WAIT_DSCNT 0
+# NEW-NEXT: V_ADD_U32
+
+---
+name: ds_read_raw
+body: |
+  bb.0:
+    ; RAW: DS read writes $vgpr0, then we read $vgpr0
+    $vgpr0 = DS_READ_B32_gfx9 $vgpr1, 0, 0, implicit $m0, implicit $exec
+    $vgpr2 = V_ADD_U32_e32 $vgpr0, $vgpr0, implicit $exec
+...
+
+#############################################################################
+# DS READ - WAW (DsCnt)
+#############################################################################
+
+# OLD-LABEL: name: ds_read_waw
+# OLD: DS_READ_B32_gfx9
+# OLD-NEXT: S_WAIT_DSCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: ds_read_waw
+# NEW: DS_READ_B32_gfx9
+# NEW-NEXT: S_WAIT_DSCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: ds_read_waw
+body: |
+  bb.0:
+    ; WAW: DS read writes $vgpr0, then MOV writes $vgpr0
+    $vgpr0 = DS_READ_B32_gfx9 $vgpr1, 0, 0, implicit $m0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# DS READ - WAR address (no XCnt needed)
+#############################################################################
+
+# OLD-LABEL: name: ds_read_war_addr
+# OLD: DS_READ_B32_gfx9
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: ds_read_war_addr
+# NEW: DS_READ_B32_gfx9
+# NEW-NEXT: V_MOV_B32
+
+---
+name: ds_read_war_addr
+body: |
+  bb.0:
+    ; WAR: DS read uses $vgpr1 as address, then we overwrite $vgpr1
+    ; DS operations don't use XCnt for address translation
+    $vgpr0 = DS_READ_B32_gfx9 $vgpr1, 0, 0, implicit $m0, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# DS WRITE - WAR address (no XCnt needed)
+#############################################################################
+
+# OLD-LABEL: name: ds_write_war_addr
+# OLD: DS_WRITE_B32_gfx9
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: ds_write_war_addr
+# NEW: DS_WRITE_B32_gfx9
+# NEW-NEXT: V_MOV_B32
+
+---
+name: ds_write_war_addr
+body: |
+  bb.0:
+    ; WAR: DS write uses $vgpr0 as address, then we overwrite $vgpr0
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $m0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# DS WRITE - WAR data (no XCnt needed)
+#############################################################################
+
+# OLD-LABEL: name: ds_write_war_data
+# OLD: DS_WRITE_B32_gfx9
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: ds_write_war_data
+# NEW: DS_WRITE_B32_gfx9
+# NEW-NEXT: V_MOV_B32
+
+---
+name: ds_write_war_data
+body: |
+  bb.0:
+    ; WAR: DS write uses $vgpr1 as data, then we overwrite $vgpr1
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $m0, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# LDSDIR - RAW (ExpCnt)
+#############################################################################
+
+# OLD-LABEL: name: ldsdir_raw
+# OLD: LDS_PARAM_LOAD
+# OLD-NEXT: S_WAIT_EXPCNT 0
+# OLD-NEXT: V_ADD_F32
+
+# NEW-LABEL: name: ldsdir_raw
+# NEW: LDS_PARAM_LOAD
+# NEW-NEXT: S_WAIT_EXPCNT 0
+# NEW-NEXT: V_ADD_F32
+
+---
+name: ldsdir_raw
+body: |
+  bb.0:
+    ; RAW: LDS_PARAM_LOAD writes $vgpr0, then we read $vgpr0
+    $vgpr0 = LDS_PARAM_LOAD 0, 0, 0, implicit $m0, implicit $exec
+    $vgpr2 = V_ADD_F32_e32 $vgpr0, $vgpr0, implicit $mode, implicit $exec
+...
+
+#############################################################################
+# LDSDIR - WAW (ExpCnt)
+#############################################################################
+
+# OLD-LABEL: name: ldsdir_waw
+# OLD: LDS_PARAM_LOAD
+# OLD-NEXT: S_WAIT_EXPCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: ldsdir_waw
+# NEW: LDS_PARAM_LOAD
+# NEW-NEXT: S_WAIT_EXPCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: ldsdir_waw
+body: |
+  bb.0:
+    ; WAW: LDS_PARAM_LOAD writes $vgpr0, then MOV writes $vgpr0
+    $vgpr0 = LDS_PARAM_LOAD 0, 0, 0, implicit $m0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# FLAT LOAD - RAW (LoadCnt/DsCnt)
+#############################################################################
+
+# OLD-LABEL: name: flat_load_raw
+# OLD: FLAT_LOAD_DWORD
+# OLD-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+# OLD-NEXT: V_ADD_U32
+
+# NEW-LABEL: name: flat_load_raw
+# NEW: FLAT_LOAD_DWORD
+# NEW-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+# NEW-NEXT: V_ADD_U32
+
+---
+name: flat_load_raw
+body: |
+  bb.0:
+    ; RAW: Flat load writes $vgpr0, then we read $vgpr0
+    $vgpr0 = FLAT_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr4 = V_ADD_U32_e32 $vgpr0, $vgpr0, implicit $exec
+...
+
+#############################################################################
+# FLAT LOAD - WAR address (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: flat_load_war_addr
+# OLD: FLAT_LOAD_DWORD
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: flat_load_war_addr
+# NEW: FLAT_LOAD_DWORD
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: flat_load_war_addr
+body: |
+  bb.0:
+    ; WAR: Flat load reads $vgpr2_vgpr3 as address, then we overwrite $vgpr2
+    $vgpr0 = FLAT_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# FLAT STORE - WAR address (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: flat_store_war_addr
+# OLD: FLAT_STORE_DWORD
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: flat_store_war_addr
+# NEW: FLAT_STORE_DWORD
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: flat_store_war_addr
+body: |
+  bb.0:
+    ; WAR: Flat store reads $vgpr0_vgpr1 as address, then we overwrite $vgpr0
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# BUFFER LOAD - RAW (LoadCnt)
+#############################################################################
+
+# OLD-LABEL: name: buffer_load_raw
+# OLD: BUFFER_LOAD_DWORD_OFFEN
+# OLD-NEXT: S_WAIT_LOADCNT 0
+# OLD-NEXT: V_ADD_U32
+
+# NEW-LABEL: name: buffer_load_raw
+# NEW: BUFFER_LOAD_DWORD_OFFEN
+# NEW-NEXT: S_WAIT_LOADCNT 0
+# NEW-NEXT: V_ADD_U32
+
+---
+name: buffer_load_raw
+body: |
+  bb.0:
+    ; RAW: Buffer load writes $vgpr0, then we read $vgpr0
+    $vgpr0 = BUFFER_LOAD_DWORD_OFFEN $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    $vgpr2 = V_ADD_U32_e32 $vgpr0, $vgpr0, implicit $exec
+...
+
+#############################################################################
+# BUFFER LOAD - WAR vaddr (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: buffer_load_war_vaddr
+# OLD: BUFFER_LOAD_DWORD_OFFEN
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: buffer_load_war_vaddr
+# NEW: BUFFER_LOAD_DWORD_OFFEN
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: buffer_load_war_vaddr
+body: |
+  bb.0:
+    ; WAR: Buffer load reads $vgpr1 as vaddr, then we overwrite $vgpr1
+    $vgpr0 = BUFFER_LOAD_DWORD_OFFEN $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 0, implicit $exec
+...
+
+#############################################################################
+# BUFFER LOAD - WAR rsrc (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: buffer_load_war_rsrc
+# OLD: BUFFER_LOAD_DWORD_OFFEN
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: S_MOV_B32
+
+# NEW-LABEL: name: buffer_load_war_rsrc
+# NEW: BUFFER_LOAD_DWORD_OFFEN
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: S_MOV_B32
+
+---
+name: buffer_load_war_rsrc
+body: |
+  bb.0:
+    ; WAR: Buffer load reads $sgpr0_sgpr1_sgpr2_sgpr3 as rsrc, then we overwrite $sgpr0
+    $vgpr0 = BUFFER_LOAD_DWORD_OFFEN $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    $sgpr0 = S_MOV_B32 0
+...
+
+#############################################################################
+# SCRATCH LOAD - RAW (LoadCnt)
+#############################################################################
+
+# OLD-LABEL: name: scratch_load_raw
+# OLD: SCRATCH_LOAD_DWORD
+# OLD-NEXT: S_WAIT_LOADCNT 0
+# OLD-NEXT: V_ADD_U32
+
+# NEW-LABEL: name: scratch_load_raw
+# NEW: SCRATCH_LOAD_DWORD
+# NEW-NEXT: S_WAIT_LOADCNT 0
+# NEW-NEXT: V_ADD_U32
+
+---
+name: scratch_load_raw
+body: |
+  bb.0:
+    ; RAW: Scratch load writes $vgpr0, then we read $vgpr0
+    $vgpr0 = SCRATCH_LOAD_DWORD $vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = V_ADD_U32_e32 $vgpr0, $vgpr0, implicit $exec
+...
+
+#############################################################################
+# SCRATCH LOAD - WAR address (XCnt)
+#############################################################################
+
+# OLD-LABEL: name: scratch_load_war_addr
+# OLD: SCRATCH_LOAD_DWORD
+# OLD-NEXT: S_WAIT_XCNT 0
+# OLD-NEXT: V_MOV_B32
+
+# NEW-LABEL: name: scratch_load_war_addr
+# NEW: SCRATCH_LOAD_DWORD
+# NEW-NEXT: S_WAIT_XCNT 0
+# NEW-NEXT: V_MOV_B32
+
+---
+name: scratch_load_war_addr
+body: |
+  bb.0:
+    ; WAR: Scratch load reads $vgpr1 as address, then we overwrite $vgpr1
+    $vgpr0 = SCRATCH_LOAD_DWORD $vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr1 = V_MOV_B32_e32 0, implicit $exec
+...

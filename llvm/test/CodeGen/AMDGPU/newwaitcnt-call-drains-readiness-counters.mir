@@ -1,0 +1,76 @@
+# RUN: llc -mtriple=amdgcn -mcpu=fiji -run-pass=si-insert-waitcnts -o - %s | FileCheck -check-prefix=GCN %s
+# RUN: llc -mtriple=amdgcn -mcpu=fiji -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck -check-prefix=GCN %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=si-insert-waitcnts -o - %s | FileCheck -check-prefix=GFX10 %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck -check-prefix=GFX10 %s
+
+# A call acts as a wait on all readiness counters: control only returns once the
+# callee has completed, so any memory op the caller issued before the call has
+# finished by the time the call returns. The new pass must drain those counters
+# at the call so a later use of a pre-call result does not re-emit a redundant
+# wait. The store counter is NOT drained (the callee's stores may still be
+# outstanding and the caller cannot track them), so a store fence after the call
+# is preserved.
+
+# A pending SMEM load (lgkmcnt) issued before the call is drained: no wait needed
+# before the post-call store that reads its result.
+# GCN-LABEL: name: lgkmcnt_drained
+# GCN: S_LOAD_DWORDX2_IMM
+# GCN: SI_CALL
+# GCN-NOT: S_WAITCNT
+# GCN: BUFFER_STORE_DWORD_OFFSET
+---
+name: lgkmcnt_drained
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr4_sgpr5, $vgpr0
+    renamable $sgpr36_sgpr37 = S_LOAD_DWORDX2_IMM renamable $sgpr0_sgpr1, 36, 0 :: (dereferenceable invariant load (s64), align 4, addrspace 4)
+    dead $sgpr30_sgpr31 = SI_CALL killed renamable $sgpr4_sgpr5, 0, csr_amdgpu, implicit-def $vgpr0
+    BUFFER_STORE_DWORD_OFFSET killed renamable $vgpr0, killed renamable $sgpr36_sgpr37_sgpr38_sgpr39, 0, 0, 0, 0, implicit $exec :: (volatile store (s32), addrspace 1)
+    S_ENDPGM 0
+...
+
+# A pending VMEM load (vmcnt) issued before the call is drained: no wait needed
+# before the post-call store that reads its result.
+# GCN-LABEL: name: vmcnt_drained
+# GCN: BUFFER_LOAD_DWORD_OFFSET
+# GCN: SI_CALL
+# GCN-NOT: S_WAITCNT
+# GCN: BUFFER_STORE_DWORD_OFFSET
+---
+name: vmcnt_drained
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr4_sgpr5, $sgpr36_sgpr37_sgpr38_sgpr39, $vgpr0
+    renamable $vgpr40 = BUFFER_LOAD_DWORD_OFFSET renamable $sgpr36_sgpr37_sgpr38_sgpr39, 0, 0, 0, 0, implicit $exec :: (load (s32), addrspace 1)
+    dead $sgpr30_sgpr31 = SI_CALL killed renamable $sgpr4_sgpr5, 0, csr_amdgpu
+    BUFFER_STORE_DWORD_OFFSET killed renamable $vgpr40, killed renamable $sgpr36_sgpr37_sgpr38_sgpr39, 0, 0, 0, 0, implicit $exec :: (store (s32), addrspace 1)
+    S_ENDPGM 0
+...
+
+# The store counter is NOT drained by a call: a soft vscnt fence after the call
+# (e.g. for a pre-call store) must be kept. This guards against over-draining.
+# GFX10-LABEL: name: storecnt_kept
+# GFX10: BUFFER_STORE_DWORD_OFFSET
+# GFX10: SI_CALL
+# GFX10: S_WAITCNT_VSCNT $sgpr_null, 0
+# GFX10: BUFFER_STORE_DWORD_OFFSET
+---
+name: storecnt_kept
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr4_sgpr5, $sgpr36_sgpr37_sgpr38_sgpr39, $vgpr40
+    BUFFER_STORE_DWORD_OFFSET renamable $vgpr40, renamable $sgpr36_sgpr37_sgpr38_sgpr39, 0, 0, 0, 0, implicit $exec :: (store (s32), addrspace 1)
+    dead $sgpr30_sgpr31 = SI_CALL killed renamable $sgpr4_sgpr5, 0, csr_amdgpu
+    S_WAITCNT_VSCNT_soft $sgpr_null, 0
+    BUFFER_STORE_DWORD_OFFSET killed renamable $vgpr40, killed renamable $sgpr36_sgpr37_sgpr38_sgpr39, 0, 0, 0, 0, implicit $exec :: (store (s32), addrspace 1)
+    S_ENDPGM 0
+...

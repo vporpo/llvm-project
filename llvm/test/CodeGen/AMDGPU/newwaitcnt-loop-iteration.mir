@@ -1,0 +1,30 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=machine-loops,amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Regression test for dataflow convergence with XCnt on gfx1250.
+# The combination of SCRATCH_LOAD + GLOBAL access + SCRATCH_STORE in a loop
+# used to cause the dataflow iteration to never converge because the XCnt
+# counter state oscillated even when no new waits were being emitted.
+# The fix uses "MIR modified" as the convergence criterion instead of
+# "counter state changed".
+
+# CHECK-LABEL: name: loop_xcnt_divergence
+# CHECK: bb.0:
+# CHECK: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+# CHECK: S_WAIT_KMCNT 0
+# CHECK: SCRATCH_LOAD_DWORD_ST
+# CHECK: S_WAIT_LOADCNT 0
+# CHECK: GLOBAL_STORE_DWORD_SADDR
+# CHECK: SCRATCH_STORE_DWORD_ST
+# CHECK: S_BRANCH %bb.0
+
+---
+name: loop_xcnt_divergence
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.0
+    $vgpr0 = SCRATCH_LOAD_DWORD_ST 0, 0, implicit $exec, implicit $flat_scr
+    GLOBAL_STORE_DWORD_SADDR $vgpr0, $vgpr0, undef $sgpr0_sgpr1, 0, 0, implicit $exec
+    SCRATCH_STORE_DWORD_ST $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    S_BRANCH %bb.0
+...

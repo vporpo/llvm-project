@@ -1,0 +1,55 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Vmcnt is 4bits so waiting for values greater than the coutner should be a noop.
+
+---
+name: asyncmark_saturate
+tracksRegLiveness: false
+body: |
+  bb.0:
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+
+    WAIT_ASYNCMARK 19, implicit $exec
+    S_ENDPGM 0
+...

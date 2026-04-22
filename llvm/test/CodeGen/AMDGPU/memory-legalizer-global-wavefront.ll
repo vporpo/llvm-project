@@ -1204,8 +1204,8 @@ define amdgpu_kernel void @global_wavefront_unordered_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -1428,8 +1428,8 @@ define amdgpu_kernel void @global_wavefront_monotonic_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -1652,8 +1652,8 @@ define amdgpu_kernel void @global_wavefront_release_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -1876,8 +1876,8 @@ define amdgpu_kernel void @global_wavefront_seq_cst_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -15101,8 +15101,8 @@ define amdgpu_kernel void @global_wavefront_one_as_unordered_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -15325,8 +15325,8 @@ define amdgpu_kernel void @global_wavefront_one_as_monotonic_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -15549,8 +15549,8 @@ define amdgpu_kernel void @global_wavefront_one_as_release_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {
@@ -15773,8 +15773,8 @@ define amdgpu_kernel void @global_wavefront_one_as_seq_cst_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr addrspace(1) %out) #0 {

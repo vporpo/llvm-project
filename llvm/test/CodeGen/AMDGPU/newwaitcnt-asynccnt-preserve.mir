@@ -1,0 +1,25 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A pre-existing S_WAIT_ASYNCCNT 0 (from llvm.amdgcn.s.wait.asynccnt) must
+# be preserved even when no AsyncCnt operations are pending.
+
+# CHECK-LABEL: name: preserve_asynccnt
+# CHECK:        S_WAIT_ASYNCCNT 0
+# CHECK:        S_ENDPGM
+
+--- |
+  define amdgpu_ps void @preserve_asynccnt() #0 { ret void }
+  attributes #0 = { "target-cpu"="gfx1250" }
+...
+
+---
+name: preserve_asynccnt
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    S_WAIT_ASYNCCNT 0, implicit-def dead $asynccnt, implicit $asynccnt
+    S_ENDPGM 0
+...

@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -amdgpu-waitcnt-load-forcezero -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -amdgpu-waitcnt-load-forcezero -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# With -amdgpu-waitcnt-load-forcezero, any vmcnt/loadcnt wait that would
+# be non-zero must be forced to zero. Here two loads are pending and the
+# use of the first would normally emit vmcnt(1), but the flag forces vmcnt(0).
+
+# CHECK-LABEL: name: load_forcezero
+# CHECK:        GLOBAL_LOAD_DWORD
+# CHECK-NEXT:   GLOBAL_LOAD_DWORD
+# CHECK-NEXT:   S_WAITCNT {{.*}}Vmcnt_0
+# CHECK-NEXT:   $vgpr4 = V_MOV_B32
+# CHECK-NEXT:   $vgpr5 = V_MOV_B32
+
+---
+name: load_forcezero
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    renamable $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec :: (load (s32), addrspace 1)
+    renamable $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec :: (load (s32), addrspace 1)
+    $vgpr4 = V_MOV_B32_e32 $vgpr2, implicit $exec
+    $vgpr5 = V_MOV_B32_e32 $vgpr3, implicit $exec
+    S_ENDPGM 0
+...

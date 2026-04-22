@@ -1,0 +1,40 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -amdgpu-smem-vmem-dep-aa=true -o - %s | FileCheck %s --check-prefix=AA
+
+# SMEM load and VMEM store use different Value* pointers (%ir.ptr1 vs
+# %ir.ptr2) that may alias. Without AA (default), both passes use exact
+# Value* match and do NOT insert a wait — this is a known limitation.
+# With -amdgpu-smem-vmem-dep-aa=true, alias analysis detects the potential
+# alias and inserts lgkmcnt(0).
+
+# CHECK-LABEL: name: smem_vmem_dep_diffptr
+# CHECK:      S_LOAD_DWORD_IMM
+# CHECK-NOT:  S_WAITCNT
+# CHECK-NEXT: GLOBAL_STORE_DWORD_SADDR
+
+# AA-LABEL: name: smem_vmem_dep_diffptr
+# AA:      S_LOAD_DWORD_IMM
+# AA-NEXT: S_WAITCNT
+# AA-NEXT: GLOBAL_STORE_DWORD_SADDR
+
+--- |
+  define amdgpu_kernel void @smem_vmem_dep_diffptr(ptr addrspace(1) %ptr1, ptr addrspace(1) %ptr2) {
+    %val = load i32, ptr addrspace(1) %ptr1
+    store i32 0, ptr addrspace(1) %ptr2
+    ret void
+  }
+...
+---
+name: smem_vmem_dep_diffptr
+tracksRegLiveness: true
+machineFunctionInfo:
+  scratchRSrcReg: '$sgpr96_sgpr97_sgpr98_sgpr99'
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr2_sgpr3, $vgpr0
+
+    $sgpr4 = S_LOAD_DWORD_IMM renamable $sgpr0_sgpr1, 0, 0 :: ("amdgpu-noclobber" load (s32) from %ir.ptr1, addrspace 1)
+    GLOBAL_STORE_DWORD_SADDR renamable $vgpr0, renamable $vgpr0, renamable $sgpr2_sgpr3, 0, 0, implicit $exec :: (store (s32) into %ir.ptr2, addrspace 1)
+    S_ENDPGM 0
+...

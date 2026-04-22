@@ -16,6 +16,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/AMDGPUAddrSpace.h"
 #include "llvm/Support/CodeGen.h"
+#include "AMDGPUNewInsertWaitcnts.h"
 
 namespace llvm {
 
@@ -52,6 +53,7 @@ FunctionPass *createAMDGPUNextUseAnalysisPrinterLegacyPass();
 FunctionPass *createSIFixSGPRCopiesLegacyPass();
 FunctionPass *createLowerWWMCopiesPass();
 FunctionPass *createSIMemoryLegalizerPass();
+FunctionPass *createAMDGPUNewInsertWaitcntsPass();
 FunctionPass *createSIInsertWaitcntsPass();
 FunctionPass *createSIPreAllocateWWMRegsLegacyPass();
 FunctionPass *createSIFormMemoryClausesLegacyPass();
@@ -542,6 +544,9 @@ extern char &AMDGPULowerVGPREncodingLegacyID;
 
 void initializeSIInsertHardClausesLegacyPass(PassRegistry &);
 extern char &SIInsertHardClausesID;
+
+void initializeAMDGPUNewInsertWaitcntsLegacyPass(PassRegistry &);
+extern char &AMDGPUNewInsertWaitcntsID;
 
 void initializeSIInsertWaitcntsLegacyPass(PassRegistry &);
 extern char &SIInsertWaitcntsID;

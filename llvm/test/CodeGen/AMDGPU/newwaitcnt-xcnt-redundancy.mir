@@ -1,0 +1,48 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test that XCnt waits are optimized away when waiting for KmCnt or LoadCnt.
+#
+# On gfx1250+, SMEM loads increment both KmCnt and XCnt. When we wait for
+# KmCnt=0, the XCnt is implicitly also 0 because both counters are decremented
+# together when the SMEM operation completes. The S_WAIT_XCNT is therefore
+# redundant.
+#
+# BUG: The new pass emits S_WAIT_XCNT 0 even when S_WAIT_KMCNT 0 is also
+# being emitted. The old pass correctly omits the redundant XCnt wait.
+
+# CHECK-LABEL: name: smem_xcnt_redundancy
+# CHECK: S_LOAD_DWORDX2_IMM
+# CHECK-NEXT: S_WAIT_KMCNT 0
+# CHECK-NEXT: S_LOAD_DWORDX2_IMM
+# CHECK: S_WAIT_KMCNT 0
+# CHECK-NEXT: $vgpr2 = V_ADD_F32
+
+---
+name: smem_xcnt_redundancy
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr4_sgpr5
+
+    ; SMEM load increments KmCnt and XCnt
+    dead $sgpr0_sgpr1 = S_LOAD_DWORDX2_IMM $sgpr4_sgpr5, 0, 32
+    ; Second SMEM load - pass will insert S_WAIT_KMCNT 0 before this
+    $sgpr0_sgpr1 = S_LOAD_DWORDX2_IMM killed $sgpr4_sgpr5, 0, 32
+
+    ; Some ALU that uses the result
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 1, implicit $exec
+
+    ; Soft wait for XCnt - should be removed as redundant since KmCnt=0 is also
+    ; being waited. Both passes should skip emitting S_WAIT_XCNT here.
+    S_WAIT_XCNT_soft 0
+    S_WAIT_KMCNT_soft 0
+
+    ; Use the SMEM result
+    $vgpr2 = V_ADD_F32_e64 0, $sgpr0, 0, $vgpr0, 0, 0, implicit $mode, implicit $exec
+
+    S_ENDPGM 0
+...

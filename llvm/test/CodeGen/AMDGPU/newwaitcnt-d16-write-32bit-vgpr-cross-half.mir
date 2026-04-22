@@ -1,0 +1,34 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -mattr=+real-true16 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -mattr=+real-true16 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# On targets with hasD16Writes32BitVgpr() (e.g. gfx11), a 16-bit VALU write can
+# modify the whole 32-bit VGPR, not just the named half. The two 16-bit halves of
+# a VGPR are therefore NOT independent here: writing one half while a load into
+# the other half is still outstanding is a hazard, because the write and the
+# load's result land in the same 32-bit register.
+#
+# Two d16 loads write $vgpr2_lo16 (vmcnt position 1) and $vgpr0_lo16 (position 0).
+# The V_SUB writes $vgpr0_hi16. Its only register read is $vgpr2_lo16 - on its own
+# that would allow vmcnt(1) - but because it writes $vgpr0, whose low half is
+# still being loaded by the position-0 load, it must wait vmcnt(0).
+#
+# Note: the new pass tracks lo16/hi16 as distinct register units, so without
+# accounting for hasD16Writes32BitVgpr it would wrongly emit vmcnt(1) here.
+
+---
+name: d16_write_32bit_vgpr_cross_half
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3
+    ; CHECK: GLOBAL_LOAD_SHORT_D16_t16
+    ; CHECK-NEXT: GLOBAL_LOAD_SHORT_D16_t16
+    ; CHECK-NEXT: S_WAITCNT {{.*}}Vmcnt_0
+    ; CHECK-NEXT: renamable $vgpr0_hi16 = V_SUB_NC_U16_t16_e64
+    ; CHECK-NEXT: renamable $vgpr1_lo16 = V_LSHLREV_B16_t16_e64
+    renamable $vgpr2_lo16 = GLOBAL_LOAD_SHORT_D16_t16 killed renamable $vgpr2_vgpr3, 48, 0, implicit $exec
+    renamable $vgpr0_lo16 = GLOBAL_LOAD_SHORT_D16_t16 killed renamable $vgpr0_vgpr1, 32, 0, implicit $exec
+    renamable $vgpr0_hi16 = V_SUB_NC_U16_t16_e64 0, 0, 0, $vgpr2_lo16, 0, 0, implicit $exec
+    renamable $vgpr1_lo16 = V_LSHLREV_B16_t16_e64 0, killed $vgpr2_lo16, 0, $vgpr0_lo16, 0, implicit $exec
+    S_ENDPGM 0
+...

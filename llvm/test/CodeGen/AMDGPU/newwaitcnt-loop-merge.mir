@@ -1,0 +1,52 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s --check-prefix=OLD
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s --check-prefix=NEW
+
+# Test that loop header merging produces correct vmcnt values.
+# The loop has a global load in the preheader and another in the loop body.
+# At the loop header, after merge we have both the preheader load and the
+# loop body load at the same user-visible index (index 0). Since vgpr3 could
+# be defined by either load (depending on iteration), we need vmcnt(0) to
+# ensure both are complete.
+
+---
+name: loop_merge_test
+tracksRegLiveness: true
+body: |
+  ; CHECK-LABEL: name: loop_merge_test
+  bb.0:
+    successors: %bb.1
+    liveins: $vgpr0_vgpr1, $vgpr2
+
+    ; Load in preheader - will be pending at loop entry
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    S_BRANCH %bb.1
+
+  bb.1:
+    ; Loop header - uses vgpr3 from prior load
+    successors: %bb.2, %bb.1
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3
+
+    ; OLD: bb.1:
+    ; OLD: S_WAITCNT .Vmcnt_0
+    ; OLD-NEXT: $vgpr4 = V_MOV_B32_e32 $vgpr3
+
+    ; NEW: bb.1:
+    ; NEW: S_WAITCNT .Vmcnt_0
+    ; NEW-NEXT: $vgpr4 = V_MOV_B32_e32 $vgpr3
+
+    ; Use vgpr3 - needs wait for the load to complete
+    $vgpr4 = V_MOV_B32_e32 $vgpr3, implicit $exec
+
+    ; New load in loop body - will be pending at back-edge
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+
+    ; Loop condition
+    S_CBRANCH_EXECNZ %bb.1, implicit $exec
+    S_BRANCH %bb.2
+
+  bb.2:
+    liveins: $vgpr3, $vgpr4
+
+    S_WAITCNT 0
+    S_ENDPGM 0
+...

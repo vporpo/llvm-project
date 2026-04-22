@@ -1,0 +1,27 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# On GFX12+, S_BARRIER_SIGNAL_ISFIRST_IMM writes SCC asynchronously (the result
+# lands via KmCnt), so a later SCC read would normally need an s_wait_kmcnt 0.
+# However, an S_BARRIER_WAIT on the SAME barrier id guarantees that the isfirst
+# signal's SCC write has already landed. So no kmcnt wait is needed before the
+# SCC read here: the S_BARRIER_WAIT clears the pending SCC dependency.
+#
+# Without this, the pass would emit a redundant s_wait_kmcnt 0 between
+# S_BARRIER_WAIT and the S_CSELECT_B32 that reads $scc.
+
+---
+name: isfirst_barrier_wait_scc_read
+tracksRegLiveness: true
+body: |
+  bb.0:
+    ; CHECK-LABEL: name: isfirst_barrier_wait_scc_read
+    ; CHECK: S_BARRIER_SIGNAL_ISFIRST_IMM -1, implicit-def $scc, implicit $scc
+    ; CHECK-NEXT: S_BARRIER_WAIT -1
+    ; CHECK-NEXT: $sgpr0 = S_CSELECT_B32 -1, 0, implicit $scc
+    S_CMP_EQ_U32 0, 0, implicit-def $scc
+    S_BARRIER_SIGNAL_ISFIRST_IMM -1, implicit-def $scc, implicit $scc
+    S_BARRIER_WAIT -1
+    $sgpr0 = S_CSELECT_B32 -1, 0, implicit $scc
+    S_ENDPGM 0
+...

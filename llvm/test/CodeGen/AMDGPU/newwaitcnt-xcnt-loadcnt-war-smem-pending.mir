@@ -1,0 +1,49 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+#
+# NOTE: XCnt is drained by some instructions so this test's description
+#       is not valid.
+#
+
+# Test XCnt WAR on a VMEM address register when XCnt holds a mixed SMEM+VMEM
+# buffer and a S_WAIT_LOADCNT 0 has been issued.
+#
+# XCnt tracks address translation for both VMEM and SMEM on gfx1250. VMEM
+# address translation completes in order, but SMEM can complete out of order.
+# When SMEM (from bb.0) and VMEM (from bb.1) are both pending on XCnt, the
+# counter decrements out of order, so a WAR on a VMEM address register requires
+# xcnt 0 even though a S_WAIT_LOADCNT 0 was already issued for the VMEM data.
+#
+# In this test:
+# - bb.0: S_LOAD_DWORD_IMM (SMEM) then branch
+# - bb.1: GLOBAL_LOAD (VMEM) using $vgpr0_vgpr1 as address
+# - bb.2: RAW on $vgpr4 forces S_WAIT_LOADCNT 0, then WAR on VMEM address $vgpr0
+#
+# Both the old and new passes emit S_WAIT_XCNT 0 here: with SMEM still pending,
+# the shared XCnt counter is out-of-order, so position-based waits are not legal.
+
+---
+name: loadcnt0_xcnt_war_with_smem_pending
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: loadcnt0_xcnt_war_with_smem_pending
+  ; CHECK: bb.2:
+  ; CHECK: S_WAIT_LOADCNT 0
+  ; CHECK-NEXT: $vgpr5 = V_ADD_U32_e32 1, $vgpr4
+  ; CHECK-NOT:  S_WAIT_XCNT
+  ; CHECK-NEXT: $vgpr0 = V_MOV_B32_e32 0
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1, $scc
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0
+    S_CBRANCH_SCC1 %bb.2, implicit $scc
+  bb.1:
+    liveins: $vgpr0_vgpr1, $sgpr2
+    $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+  bb.2:
+    liveins: $sgpr0_sgpr1, $sgpr2, $vgpr0, $vgpr4
+    $vgpr5 = V_ADD_U32_e32 1, $vgpr4, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...

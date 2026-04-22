@@ -1,0 +1,27 @@
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=tonga -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=tonga -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# An export (EXP) reads its source VGPRs some time after it is issued, tracked by
+# the export counter (ExpCnt). Overwriting one of those source registers is a
+# write-after-read hazard that needs a wait for ExpCnt to reach 0.
+#
+# Here EXP_DONE reads $vgpr0, and the following V_MOV overwrites $vgpr0, so a
+# wait expcnt 0 is required between them.
+
+---
+name: exp_src_war
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0
+    ; CHECK: EXP_DONE 0, $vgpr0, $vgpr0, $vgpr0, $vgpr0
+    ; CHECK-NEXT: S_WAITCNT {{.*}}Expcnt_0
+    ; CHECK-NEXT: $vgpr0 = V_MOV_B32_e32 1
+    EXP_DONE 0, $vgpr0, $vgpr0, $vgpr0, $vgpr0, -1, 0, 15, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 1, implicit $exec
+    S_ENDPGM 0
+...

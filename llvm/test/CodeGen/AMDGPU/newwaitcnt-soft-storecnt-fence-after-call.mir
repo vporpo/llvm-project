@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A call may leave the callee's stores outstanding on the store counter, and the
+# caller cannot track them. So after a call the store counter state is unknown,
+# just as it is at the entry of a non-entry function. A memory-legalizer soft
+# StoreCnt fence (e.g. before a seq_cst store) following a call must therefore be
+# kept even though no store is visible after the call in this function. This is
+# an entry (kernel) function, so there is no entry-block store-counter seeding -
+# the call is the only reason the fence must be preserved.
+
+---
+name: storecnt_fence_after_call
+machineFunctionInfo:
+  isEntryFunction: true
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: storecnt_fence_after_call
+    ; CHECK: $sgpr4_sgpr5 = S_SWAPPC_B64 $sgpr0_sgpr1
+    ; CHECK-NEXT: S_WAIT_STORECNT 0
+    ; CHECK-NEXT: GLOBAL_STORE_DWORD
+    $sgpr4_sgpr5 = S_SWAPPC_B64 $sgpr0_sgpr1
+    S_WAIT_STORECNT_soft 0
+    GLOBAL_STORE_DWORD renamable $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec :: (store (s32), addrspace 1)
+    S_ENDPGM 0
+...

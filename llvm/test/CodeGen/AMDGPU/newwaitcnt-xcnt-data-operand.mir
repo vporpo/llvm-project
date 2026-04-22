@@ -1,0 +1,39 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Test that XCnt WAR hazards only apply to ADDRESS operands, not DATA operands.
+#
+# XCnt tracks address translation. When a store uses a register as DATA (not
+# address), overwriting that register doesn't create an XCnt WAR hazard because
+# the data operand is read via the LoadCnt/StoreCnt path, not during address
+# translation.
+#
+# In this test:
+# - GLOBAL_STORE_DWORD uses $vgpr5 as DATA operand
+# - FLAT_LOAD_DWORD defines $vgpr5
+# This should NOT require an S_WAIT_XCNT because $vgpr5 is data, not address.
+
+---
+name: store_data_operand_no_xcnt_wait
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr3, $vgpr4, $vgpr5
+    ; CHECK-LABEL: name: store_data_operand_no_xcnt_wait
+    ; CHECK: S_WAIT_LOADCNT 0
+    ; CHECK-NEXT: GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr5
+    ; CHECK: FLAT_LOAD_DWORD
+    ; CHECK-NOT: S_WAIT_XCNT
+    ; CHECK: $vgpr5 = FLAT_LOAD_DWORD
+    $vgpr0 = SCRATCH_LOAD_DWORD $vgpr4, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr1 = V_MOV_B32_e32 1, implicit $exec
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr5, 0, 0, implicit $exec
+    $vgpr2 = SCRATCH_LOAD_DWORD $vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr6 = V_MOV_B32_e32 1, implicit $exec
+    $vgpr7 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr :: (load seq_cst (s32), addrspace 1)
+    $vgpr4 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr :: (load seq_cst (s32), addrspace 1)
+    $vgpr5 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr :: (load seq_cst (s32), addrspace 1)
+    $vgpr8 = V_MOV_B32_e32 1, implicit $exec
+...

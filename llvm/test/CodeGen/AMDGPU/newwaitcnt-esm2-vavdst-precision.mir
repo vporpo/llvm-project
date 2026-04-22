@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -amdgpu-expert-scheduling-mode=1 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -amdgpu-expert-scheduling-mode=1 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Four VALUs write v0-v3. A FLAT_LOAD uses v0_v1 as address.
+# VaVdst_2 is correct: wait for the 2 oldest results (v0, v1) to complete,
+# leaving 2 pending (v2, v3). VaVdst_0 is overly conservative.
+
+# CHECK-LABEL: name: vavdst_precision
+# CHECK:        V_MOV_B32_e32 $sgpr0
+# CHECK-NEXT:   V_MOV_B32_e32 $sgpr1
+# CHECK-NEXT:   V_MOV_B32_e32 $sgpr2
+# CHECK-NEXT:   V_MOV_B32_e32 $sgpr3
+# CHECK-NEXT:   S_WAITCNT_DEPCTR {{.*}}VaVdst_2
+# CHECK-NEXT:   FLAT_LOAD_DWORD {{.*}}$vgpr0_vgpr1
+
+---
+name: vavdst_precision
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0, $sgpr1, $sgpr2, $sgpr3, $sgpr30_sgpr31
+    $vgpr0 = V_MOV_B32_e32 $sgpr0, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 $sgpr1, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $sgpr2, implicit $exec
+    $vgpr3 = V_MOV_B32_e32 $sgpr3, implicit $exec
+    renamable $vgpr4 = FLAT_LOAD_DWORD renamable $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32))
+    S_WAITCNT_DEPCTR .VaVdst_0
+    S_SETPC_B64_return killed $sgpr30_sgpr31, implicit $vgpr4
+...

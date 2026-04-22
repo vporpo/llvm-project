@@ -1,0 +1,30 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -mattr=+real-true16 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -mattr=+real-true16 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# On gfx11 with real-true16, the two 16-bit halves of a VGPR are written by
+# separate d16 loads. A store reading $vgpr0_lo16 depends only on the load that
+# wrote lo16, not on the later load that wrote hi16, so the wait before it is
+# vmcnt(1) (one load - the hi16 one - may still be in flight), and a separate
+# vmcnt(0) is needed before the store that reads hi16. The new pass must track the
+# halves independently and not over-wait vmcnt(0) before the lo16 store.
+
+# CHECK-LABEL: name: d16_subreg_vmcnt
+# CHECK: $vgpr0_lo16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16
+# CHECK-NEXT: $vgpr0_hi16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16
+# CHECK-NEXT: S_WAITCNT
+# CHECK-NEXT: GLOBAL_STORE_SHORT_SADDR_t16 renamable $vgpr1, killed renamable $vgpr0_lo16
+# CHECK-NEXT: S_WAITCNT
+# CHECK-NEXT: GLOBAL_STORE_SHORT_SADDR_t16 killed renamable $vgpr1, killed renamable $vgpr0_hi16
+
+---
+name: d16_subreg_vmcnt
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr2_sgpr3, $vgpr1
+    renamable $vgpr0_lo16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 renamable $sgpr0_sgpr1, renamable $vgpr1, 0, 0, implicit $exec :: (load (s16), addrspace 1)
+    renamable $vgpr0_hi16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 renamable $sgpr0_sgpr1, renamable $vgpr1, 2, 0, implicit $exec :: (load (s16), addrspace 1)
+    GLOBAL_STORE_SHORT_SADDR_t16 renamable $vgpr1, killed renamable $vgpr0_lo16, renamable $sgpr2_sgpr3, 0, 0, implicit $exec :: (store (s16), addrspace 1)
+    GLOBAL_STORE_SHORT_SADDR_t16 killed renamable $vgpr1, killed renamable $vgpr0_hi16, killed renamable $sgpr2_sgpr3, 2, 0, implicit $exec :: (store (s16), addrspace 1)
+    S_ENDPGM 0
+...

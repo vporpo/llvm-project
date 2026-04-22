@@ -1,0 +1,22 @@
+# RUN: llc -mtriple=amdgcn -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A soft waitcnt whose immediate is "no wait" on every counter (.AllOff, all
+# fields at their max) decodes to no counters at all. Such a wait is fully
+# redundant and must be erased, not kept. (Per-counter redundancy removal treats
+# "no counters needed" the same as "all decoded counters redundant".)
+
+# CHECK-LABEL: name: alloff_soft_wait_erased
+# CHECK: $sgpr2 = S_MOV_B32 42
+# CHECK-NEXT: $vgpr2 = IMPLICIT_DEF
+# CHECK-NOT: S_WAITCNT
+
+---
+name: alloff_soft_wait_erased
+body: |
+  bb.0:
+    $sgpr2 = S_MOV_B32 42
+    S_WAITCNT_soft .AllOff
+    $vgpr2 = IMPLICIT_DEF
+    S_ENDPGM 0
+...

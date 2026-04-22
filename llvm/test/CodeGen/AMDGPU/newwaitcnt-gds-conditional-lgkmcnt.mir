@@ -1,0 +1,39 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A GDS instruction in a conditional block drains lgkmcnt before falling
+# through to the merge block. On the skip path (bb.0 -> bb.2) nothing is
+# pending on lgkmcnt. The merge block must not emit a redundant lgkmcnt(0).
+
+# CHECK-LABEL: name: gds_conditional_no_redundant_lgkmcnt
+# CHECK:      bb.2:
+# CHECK-NOT:   S_WAITCNT {{.*}}Lgkmcnt
+# CHECK:       V_MOV_B32
+
+---
+name: gds_conditional_no_redundant_lgkmcnt
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1(0x40000000), %bb.2(0x40000000)
+    liveins: $sgpr0, $vgpr0
+
+    V_CMP_NE_U32_e32 0, $vgpr0, implicit-def $vcc_lo, implicit-def $vcc, implicit $exec
+    renamable $vgpr1 = IMPLICIT_DEF
+    $sgpr1 = S_AND_SAVEEXEC_B32 killed $vcc_lo, implicit-def $exec, implicit-def $scc, implicit $exec
+    S_CBRANCH_EXECZ %bb.2, implicit $exec
+
+  bb.1:
+    successors: %bb.2(0x80000000)
+    liveins: $sgpr0, $sgpr1, $vgpr0
+
+    $m0 = S_MOV_B32 killed $sgpr0
+    renamable $vgpr1 = DS_ORDERED_COUNT killed renamable $vgpr0, 4868, implicit $m0, implicit $exec :: (load store (s32), addrspace 2)
+
+  bb.2:
+    liveins: $sgpr1, $vgpr1
+
+    $exec_lo = S_OR_B32 $exec_lo, killed renamable $sgpr1, implicit-def $scc
+    $vgpr0 = V_MOV_B32_e32 killed $vgpr1, implicit $exec, implicit $exec
+    SI_RETURN_TO_EPILOG killed $vgpr0
+...

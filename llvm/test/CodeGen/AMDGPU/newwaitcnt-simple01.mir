@@ -1,0 +1,25 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=si-insert-waitcnts %s -o - | FileCheck -check-prefix=GFX12 %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck -check-prefix=GFX12 %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1030 -run-pass=si-insert-waitcnts %s -o - | FileCheck -check-prefix=GFX10 %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1030 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck -check-prefix=GFX10 %s
+
+# Test FLAT load followed by store using the loaded value.
+# FLAT uses both LoadCnt/DsCnt (gfx12) or VmCnt/LgkmCnt (pre-gfx12).
+
+# GFX12-LABEL: name: flats
+# GFX12: FLAT_LOAD_DWORD
+# GFX12: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+# GFX12-NEXT: FLAT_STORE_DWORD
+
+# GFX10-LABEL: name: flats
+# GFX10: FLAT_LOAD_DWORD
+# GFX10: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+# GFX10-NEXT: FLAT_STORE_DWORD
+---
+name: flats
+body: |
+  bb.0:
+    $vgpr512 = FLAT_LOAD_DWORD undef $vgpr2_vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    FLAT_STORE_DWORD undef $vgpr4_vgpr5, $vgpr512, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...

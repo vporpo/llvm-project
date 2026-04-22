@@ -1,0 +1,56 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+#
+# WAIT_ASYNCMARK(17) with 18 marks in the buffer: the Nth mark is present so the
+# wait value should be vmcnt(17), not clamped to vmcnt(15) (MaxAsyncMarks-1).
+# Clamping should only apply when N refers to a mark that was evicted due to
+# buffer overflow (i.e. more than MaxAsyncMarks marks accumulated in a loop).
+#
+# CHECK-LABEL: name: test
+# CHECK: WAIT_ASYNCMARK 17
+# CHECK-NEXT: S_WAITCNT .Vmcnt_17
+---
+name: test
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $m0
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 4, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 8, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 12, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 16, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 20, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 24, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 28, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 32, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 36, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 40, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 44, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 48, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 52, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 56, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 60, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 64, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 68, 1, implicit $m0, implicit $exec
+    ASYNCMARK
+    WAIT_ASYNCMARK 17
+    S_ENDPGM 0
+...

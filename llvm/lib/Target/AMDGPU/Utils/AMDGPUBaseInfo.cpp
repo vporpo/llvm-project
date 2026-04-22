@@ -1789,6 +1789,12 @@ unsigned getAsynccntBitMask(const IsaVersion &Version) {
   return (1 << getAsynccntBitWidth(Version.Major, Version.Minor)) - 1;
 }
 
+unsigned getTensorcntBitMask(const IsaVersion &Version) {
+  // Tensorcnt exists only on GFX1250 (12.5) with the same 6-bit width as
+  // Asynccnt since both are DMA tracking counters on the same hardware.
+  return getAsynccntBitMask(Version);
+}
+
 unsigned getStorecntBitMask(const IsaVersion &Version) {
   return (1 << getStorecntBitWidth(Version.Major)) - 1;
 }

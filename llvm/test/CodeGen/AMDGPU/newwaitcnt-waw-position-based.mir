@@ -1,0 +1,30 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test that WAW hazards on non-VMEM counters force wait=0.
+# KmCnt (SMEM) doesn't have in-order completion guarantees, so we must wait
+# for all pending SMEM operations before overwriting a destination register.
+
+# CHECK-LABEL: name: smem_waw_wait_zero
+# CHECK: S_LOAD_DWORDX2_IMM
+# CHECK: S_LOAD_DWORDX2_IMM
+# CHECK: S_LOAD_DWORDX2_IMM
+# CHECK: S_LOAD_DWORDX2_IMM
+# CHECK-NEXT: S_WAIT_KMCNT 0
+# CHECK-NEXT: S_MOV_B32
+
+---
+name: smem_waw_wait_zero
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1
+    ; 4 SMEM loads with destinations sgpr2_3, sgpr4_5, sgpr6_7, sgpr8_9
+    $sgpr2_sgpr3 = S_LOAD_DWORDX2_IMM $sgpr0_sgpr1, 0, 0 :: (load (s64), addrspace 4)
+    $sgpr4_sgpr5 = S_LOAD_DWORDX2_IMM $sgpr0_sgpr1, 0, 0 :: (load (s64), addrspace 4)
+    $sgpr6_sgpr7 = S_LOAD_DWORDX2_IMM $sgpr0_sgpr1, 0, 0 :: (load (s64), addrspace 4)
+    $sgpr8_sgpr9 = S_LOAD_DWORDX2_IMM $sgpr0_sgpr1, 0, 0 :: (load (s64), addrspace 4)
+    ; WAW on $sgpr2 (part of first load's destination)
+    ; Must wait for KMCNT=0 because SMEM doesn't complete in order
+    $sgpr2 = S_MOV_B32 0
+...

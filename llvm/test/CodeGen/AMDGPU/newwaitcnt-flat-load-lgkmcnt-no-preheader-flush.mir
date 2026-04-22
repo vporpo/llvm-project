@@ -1,0 +1,36 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A FLAT load in a loop preheader is tracked on both VmCnt and LgkmCnt (FLAT may
+# access LDS). When its result is used inside the loop, the wait must stay in the
+# loop for both counters - the LgkmCnt half must not be flushed to the preheader
+# any more than the VmCnt half. Here the loop's V_CMP reads $vgpr0 (the load
+# result), so the loop keeps a combined Vmcnt_0_Lgkmcnt_0 wait; LgkmCnt is not
+# hoisted to the preheader.
+
+---
+name: flat_load_lgkmcnt_no_preheader_flush
+tracksRegLiveness: true
+body: |
+  ; CHECK-LABEL: name: flat_load_lgkmcnt_no_preheader_flush
+  ; CHECK: renamable $vgpr0 = FLAT_LOAD_DWORD
+  ; CHECK-NOT: S_WAITCNT
+  ; CHECK: bb.1:
+  ; CHECK: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+  ; CHECK-NEXT: V_CMP_GT_F32_e32
+  bb.0:
+    successors: %bb.1
+    liveins: $vgpr6_vgpr7
+    renamable $vgpr0 = FLAT_LOAD_DWORD killed renamable $vgpr6_vgpr7, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32))
+    S_BRANCH %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    liveins: $vgpr0, $sgpr11
+    renamable $vgpr6 = V_CVT_F32_U32_e32 $sgpr11, implicit $mode, implicit $exec
+    V_CMP_GT_F32_e32 $vgpr6, $vgpr0, implicit-def $vcc, implicit $mode, implicit $exec
+    S_CBRANCH_EXECNZ %bb.1, implicit $exec
+
+  bb.2:
+    S_ENDPGM 0
+...

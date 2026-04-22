@@ -1,0 +1,51 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -amdgpu-expert-scheduling-mode=1 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -amdgpu-expert-scheduling-mode=1 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# V_MOV in the preheader writes vgpr0 (VaVdst). The loop body has
+# S_PREFETCH_DATA (VmVsrc on SGPRs) and GLOBAL_LOAD_DWORDX4_SADDR using
+# vgpr0 as offset. The VaVdst and VmVsrc waits should both appear inside
+# the loop body, not split between preheader and loop.
+
+# CHECK-LABEL: name: depctr_preheader_absorb
+# CHECK:      bb.1:
+# CHECK:        V_MOV_B32
+# CHECK-NOT:    S_WAITCNT_DEPCTR
+# CHECK:      bb.2:
+# CHECK:        S_PREFETCH_DATA
+# CHECK:        S_WAITCNT_DEPCTR
+
+---
+name: depctr_preheader_absorb
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    successors: %bb.1
+    liveins: $sgpr4_sgpr5
+    renamable $sgpr6 = S_LOAD_DWORD_IMM renamable $sgpr4_sgpr5, 52, 0 :: (load (s32), addrspace 4)
+    S_BRANCH %bb.1
+
+  bb.1:
+    successors: %bb.2
+    liveins: $sgpr6, $sgpr4_sgpr5
+    renamable $sgpr0_sgpr1_sgpr2_sgpr3 = S_LOAD_DWORDX4_IMM killed renamable $sgpr4_sgpr5, 36, 0 :: (load (s128), addrspace 4)
+    renamable $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+    renamable $sgpr2_sgpr3 = S_ADD_U64 killed renamable $sgpr2_sgpr3, 176
+
+  bb.2:
+    successors: %bb.2, %bb.3
+    liveins: $sgpr6, $vgpr0, $sgpr2_sgpr3, $sgpr0_sgpr1_sgpr2_sgpr3:0x000000000000000F
+    S_PREFETCH_DATA renamable $sgpr2_sgpr3, 0, $sgpr_null, 0, 0 :: (load (s8), addrspace 1)
+    renamable $vgpr1_vgpr2_vgpr3_vgpr4 = GLOBAL_LOAD_DWORDX4_SADDR renamable $sgpr2_sgpr3, renamable $vgpr0, -176, 0, implicit $exec :: (load (s128), addrspace 1)
+    renamable $sgpr6 = S_ADD_I32 killed renamable $sgpr6, -1, implicit-def dead $scc
+    renamable $sgpr2_sgpr3 = S_ADD_U64 killed renamable $sgpr2_sgpr3, 16
+    S_CMP_LG_U32 renamable $sgpr6, 0, implicit-def $scc
+    GLOBAL_STORE_DWORDX4_SADDR renamable $vgpr0, killed renamable $vgpr1_vgpr2_vgpr3_vgpr4, renamable $sgpr0_sgpr1, 0, 0, implicit $exec :: (store (s128), addrspace 1)
+    renamable $sgpr0_sgpr1 = S_ADD_U64 killed renamable $sgpr0_sgpr1, 16
+    S_CBRANCH_SCC1 %bb.2, implicit killed $scc
+    S_BRANCH %bb.3
+
+  bb.3:
+    S_ENDPGM 0
+...

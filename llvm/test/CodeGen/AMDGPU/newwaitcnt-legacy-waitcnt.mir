@@ -1,0 +1,76 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -verify-machineinstrs -run-pass si-insert-waitcnts -o - %s | FileCheck -check-prefixes=GFX12 %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -verify-machineinstrs -run-pass amdgpu-new-insert-waitcnts -o - %s | FileCheck -check-prefixes=GFX12 %s
+
+# Test that on GFX12+, legacy S_WAITCNT instructions are preserved but don't
+# affect our wait insertion logic. Legacy S_WAITCNT waits for all outstanding
+# memory operations rather than specific counter values, so we cannot rely on
+# it to clear specific counters.
+
+---
+name: legacy_waitcnt_load_use
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+
+    ; The legacy S_WAITCNT should be preserved, but we should still insert
+    ; the proper GFX12 waits for the load-use dependency.
+
+    ; GFX12-LABEL: name: legacy_waitcnt_load_use
+    ; GFX12: $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    ; GFX12-NEXT: S_WAITCNT .Vmcnt_0_Expcnt_0_Lgkmcnt_0
+    ; GFX12-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+    ; GFX12-NEXT: FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    ; GFX12-NEXT: S_ENDPGM 0
+    $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    S_WAITCNT 0
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+
+---
+name: legacy_waitcnt_lds_use
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0
+
+    ; DS load followed by legacy S_WAITCNT and use. We should still insert
+    ; proper GFX12 waits.
+
+    ; GFX12-LABEL: name: legacy_waitcnt_lds_use
+    ; GFX12: $vgpr1 = DS_READ_B32 $vgpr0, 0, 0, implicit $m0, implicit $exec
+    ; GFX12-NEXT: S_WAITCNT .Vmcnt_0_Expcnt_0_Lgkmcnt_0
+    ; GFX12-NEXT: S_WAIT_DSCNT 0
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32_e32 $vgpr1, implicit $exec
+    ; GFX12-NEXT: S_ENDPGM 0
+    $vgpr1 = DS_READ_B32 $vgpr0, 0, 0, implicit $m0, implicit $exec
+    S_WAITCNT 0
+    $vgpr2 = V_MOV_B32_e32 $vgpr1, implicit $exec
+    S_ENDPGM 0
+...
+
+---
+name: legacy_waitcnt_global_use
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+
+    ; GLOBAL load followed by legacy S_WAITCNT and use. We should still
+    ; insert proper GFX12 waits.
+
+    ; GFX12-LABEL: name: legacy_waitcnt_global_use
+    ; GFX12: $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    ; GFX12-NEXT: S_WAITCNT .Vmcnt_0_Expcnt_0_Lgkmcnt_0
+    ; GFX12-NEXT: S_WAIT_LOADCNT 0
+    ; GFX12-NEXT: $vgpr3 = V_MOV_B32_e32 $vgpr2, implicit $exec
+    ; GFX12-NEXT: S_ENDPGM 0
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    S_WAITCNT 0
+    $vgpr3 = V_MOV_B32_e32 $vgpr2, implicit $exec
+    S_ENDPGM 0
+...

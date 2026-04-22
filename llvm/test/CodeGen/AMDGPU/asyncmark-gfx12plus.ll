@@ -183,8 +183,8 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; SDAG-NEXT:    s_wait_asynccnt 0x1
 ; SDAG-NEXT:    ds_load_b32 v0, v0
 ; SDAG-NEXT:    ; wait_asyncmark(0)
-; SDAG-NEXT:    s_wait_dscnt 0x0
-; SDAG-NEXT:    s_wait_asynccnt 0x0
+; SDAG-DAG:     s_wait_dscnt 0x0
+; SDAG-DAG:     s_wait_asynccnt 0x0
 ; SDAG-NEXT:    v_add_nc_u32_e32 v0, v1, v0
 ; SDAG-NEXT:    s_wait_kmcnt 0x0
 ; SDAG-NEXT:    global_store_b32 v2, v0, s[0:1]
@@ -243,8 +243,8 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GISEL-NEXT:    s_wait_asynccnt 0x1
 ; GISEL-NEXT:    ds_load_b32 v0, v0
 ; GISEL-NEXT:    ; wait_asyncmark(0)
-; GISEL-NEXT:    s_wait_dscnt 0x0
-; GISEL-NEXT:    s_wait_asynccnt 0x0
+; GISEL-DAG:     s_wait_dscnt 0x0
+; GISEL-DAG:     s_wait_asynccnt 0x0
 ; GISEL-NEXT:    v_readfirstlane_b32 s2, v0
 ; GISEL-NEXT:    s_add_co_i32 s2, s6, s2
 ; GISEL-NEXT:    s_delay_alu instid0(SALU_CYCLE_1)

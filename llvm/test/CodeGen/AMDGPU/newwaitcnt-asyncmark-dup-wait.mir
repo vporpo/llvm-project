@@ -1,0 +1,24 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+#
+# Pre-existing S_WAITCNT after WAIT_ASYNCMARK should not be duplicated.
+# The pass should either keep the pre-existing wait or replace it, not add a new one.
+#
+# CHECK-LABEL: name: asyncmark_dup_wait
+# CHECK: WAIT_ASYNCMARK 0
+# CHECK-NEXT: S_WAITCNT .Vmcnt_0
+# CHECK-NOT: S_WAITCNT .Vmcnt_0
+# CHECK: S_ENDPGM
+---
+name: asyncmark_dup_wait
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 1, implicit $m0, implicit $exec
+    ASYNCMARK implicit $exec
+    WAIT_ASYNCMARK 0, implicit $exec
+    S_WAITCNT .Vmcnt_0
+    S_ENDPGM 0
+...

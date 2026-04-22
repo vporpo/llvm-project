@@ -48,18 +48,18 @@ using HWEvents = AMDGPU::HWEvents;
 
 #define DEBUG_TYPE "si-insert-waitcnts"
 
-static cl::opt<bool>
+cl::opt<bool>
     ForceEmitZeroFlag("amdgpu-waitcnt-forcezero",
                       cl::desc("Force all waitcnt instrs to be emitted as "
                                "s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
                       cl::init(false), cl::Hidden);
 
-static cl::opt<bool> ForceEmitZeroLoadFlag(
+cl::opt<bool> ForceEmitZeroLoadFlag(
     "amdgpu-waitcnt-load-forcezero",
     cl::desc("Force all waitcnt load counters to wait until 0"),
     cl::init(false), cl::Hidden);
 
-static cl::opt<bool> ExpertSchedulingModeFlag(
+cl::opt<bool> ExpertSchedulingModeFlag(
     "amdgpu-expert-scheduling-mode",
     cl::desc("Enable expert scheduling mode 2 for all functions (GFX12+ only)"),
     cl::init(false), cl::Hidden);

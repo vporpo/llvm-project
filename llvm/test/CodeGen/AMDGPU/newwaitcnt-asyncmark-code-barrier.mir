@@ -1,0 +1,27 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+#
+# ASYNCMARK after a non-async regular VMEM load acts as a code-motion barrier
+# only and should generate NO hardware wait. A regular global_load_dword is not
+# an async LDS DMA instruction.
+#
+# CHECK-LABEL: name: asyncmark_code_barrier
+# CHECK: GLOBAL_LOAD_DWORD
+# CHECK-NEXT: ASYNCMARK
+# CHECK-NOT: S_WAITCNT
+# CHECK: WAIT_ASYNCMARK 0
+# CHECK-NEXT: S_ENDPGM
+---
+name: asyncmark_code_barrier
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; Regular VMEM load (not async LDS DMA) followed by ASYNCMARK as barrier.
+    ; WAIT_ASYNCMARK(0) should emit NO wait — nothing async is in flight.
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    ASYNCMARK implicit $exec
+    WAIT_ASYNCMARK 0, implicit $exec
+    S_ENDPGM 0
+...

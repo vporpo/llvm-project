@@ -1,0 +1,223 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx942 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx942 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Test memory dependencies across different hardware units.
+# Unlike same-unit operations, cross-unit operations require explicit waits
+# because different hardware units (VMEM vs DS) don't automatically synchronize.
+#
+# BUFFER_LOAD_LDS/GLOBAL_LOAD_LDS (VMEM unit, vmcnt) write to LDS.
+# DS_READ/DS_WRITE (DS unit, lgkmcnt) read/write LDS.
+# Waits are needed to synchronize between these units.
+#
+# The memory operands with addrspace(3) are required for the pass to detect
+# the cross-unit LDS dependency.
+
+#############################################################################
+# BUFFER_LOAD_LDS followed by DS operations
+#############################################################################
+
+# BUFFER_LOAD_LDS (vmcnt) followed by DS_READ (lgkmcnt) - RAW on LDS
+# CHECK-LABEL: name: buffer_load_lds_ds_read
+# CHECK: BUFFER_LOAD_DWORD_LDS_IDXEN
+# CHECK: S_WAITCNT {{.}}Vmcnt_0
+# CHECK-NEXT: DS_READ_B32_gfx9
+---
+name: buffer_load_lds_ds_read
+body: |
+  bb.0:
+    $m0 = S_MOV_B32 0
+    BUFFER_LOAD_DWORD_LDS_IDXEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4, 4, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr2, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# BUFFER_LOAD_LDS (vmcnt) followed by DS_WRITE (lgkmcnt) - WAW on LDS
+# CHECK-LABEL: name: buffer_load_lds_ds_write
+# CHECK: BUFFER_LOAD_DWORD_LDS_IDXEN
+# CHECK: S_WAITCNT {{.}}Vmcnt_0
+# CHECK-NEXT: DS_WRITE_B32_gfx9
+---
+name: buffer_load_lds_ds_write
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4
+    $m0 = S_MOV_B32 0
+    BUFFER_LOAD_DWORD_LDS_IDXEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4, 4, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    DS_WRITE_B32_gfx9 $vgpr1, $vgpr2, 0, 0, implicit $m0, implicit $exec :: (store (s32) into `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# DS_WRITE (lgkmcnt) followed by BUFFER_LOAD_LDS (vmcnt) - WAW on LDS
+# No wait needed - DS operations complete synchronously before next instruction.
+# CHECK-LABEL: name: ds_write_buffer_load_lds
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_IDXEN
+---
+name: ds_write_buffer_load_lds
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4
+    $m0 = S_MOV_B32 0
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $m0, implicit $exec :: (store (s32) into `ptr addrspace(3) poison`)
+    BUFFER_LOAD_DWORD_LDS_IDXEN $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4, 4, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# DS_READ (lgkmcnt) followed by BUFFER_LOAD_LDS (vmcnt) - WAR on LDS
+# No wait needed - DS operations complete synchronously before next instruction.
+# CHECK-LABEL: name: ds_read_buffer_load_lds
+# CHECK: DS_READ_B32_gfx9
+# CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_IDXEN
+---
+name: ds_read_buffer_load_lds
+body: |
+  bb.0:
+    liveins: $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4
+    $m0 = S_MOV_B32 0
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    BUFFER_LOAD_DWORD_LDS_IDXEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4, 4, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+#############################################################################
+# GLOBAL_LOAD_LDS followed by DS operations
+#############################################################################
+
+# GLOBAL_LOAD_LDS (vmcnt) followed by DS_READ (lgkmcnt) - RAW on LDS
+# CHECK-LABEL: name: global_load_lds_ds_read
+# CHECK: GLOBAL_LOAD_LDS_DWORD
+# CHECK: S_WAITCNT {{.}}Vmcnt_0
+# CHECK-NEXT: DS_READ_B32_gfx9
+---
+name: global_load_lds_ds_read
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    $m0 = S_MOV_B32 0
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    $vgpr3 = DS_READ_B32_gfx9 $vgpr2, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# GLOBAL_LOAD_LDS (vmcnt) followed by DS_WRITE (lgkmcnt) - WAW on LDS
+# CHECK-LABEL: name: global_load_lds_ds_write
+# CHECK: GLOBAL_LOAD_LDS_DWORD
+# CHECK: S_WAITCNT {{.}}Vmcnt_0
+# CHECK-NEXT: DS_WRITE_B32_gfx9
+---
+name: global_load_lds_ds_write
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3
+    $m0 = S_MOV_B32 0
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    DS_WRITE_B32_gfx9 $vgpr2, $vgpr3, 0, 0, implicit $m0, implicit $exec :: (store (s32) into `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# DS_WRITE (lgkmcnt) followed by GLOBAL_LOAD_LDS (vmcnt) - WAW on LDS
+# No wait needed - DS operations complete synchronously before next instruction.
+# CHECK-LABEL: name: ds_write_global_load_lds
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: GLOBAL_LOAD_LDS_DWORD
+---
+name: ds_write_global_load_lds
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3
+    $m0 = S_MOV_B32 0
+    DS_WRITE_B32_gfx9 $vgpr2, $vgpr3, 0, 0, implicit $m0, implicit $exec :: (store (s32) into `ptr addrspace(3) poison`)
+    GLOBAL_LOAD_LDS_DWORD $vgpr0_vgpr1, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+#############################################################################
+# FLAT instructions - can access both global memory and LDS
+# FLAT operations may access LDS, so we need to synchronize with DS ops.
+#############################################################################
+
+# FLAT_LOAD followed by DS_READ - no cross-unit dependency
+# FLAT accesses generic address space, not specifically LDS.
+# CHECK-LABEL: name: flat_load_ds_read
+# CHECK: FLAT_LOAD_DWORD
+# CHECK-NEXT: DS_READ_B32_gfx9
+---
+name: flat_load_ds_read
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    $m0 = S_MOV_B32 0
+    $vgpr3 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32) from `ptr poison`)
+    $vgpr4 = DS_READ_B32_gfx9 $vgpr2, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# FLAT_STORE followed by DS_READ - no cross-unit dependency
+# FLAT accesses generic address space, not specifically LDS.
+# CHECK-LABEL: name: flat_store_ds_read
+# CHECK: FLAT_STORE_DWORD
+# CHECK-NEXT: DS_READ_B32_gfx9
+---
+name: flat_store_ds_read
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3
+    $m0 = S_MOV_B32 0
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr3, 0, 0, implicit $exec, implicit $flat_scr :: (store (s32) into `ptr poison`)
+    $vgpr4 = DS_READ_B32_gfx9 $vgpr2, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...
+---
+# DS_READ followed by FLAT_LOAD - no cross-unit dependency
+# FLAT accesses generic address space, not specifically LDS.
+# CHECK-LABEL: name: ds_read_flat_load
+# CHECK: DS_READ_B32_gfx9
+# CHECK-NEXT: FLAT_LOAD_DWORD
+---
+name: ds_read_flat_load
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    $m0 = S_MOV_B32 0
+    $vgpr3 = DS_READ_B32_gfx9 $vgpr2, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    $vgpr4 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32) from `ptr poison`)
+    S_ENDPGM 0
+...
+---
+# DS_WRITE followed by FLAT_STORE - no cross-unit dependency
+# FLAT accesses generic address space, not specifically LDS.
+# CHECK-LABEL: name: ds_write_flat_store
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: FLAT_STORE_DWORD
+---
+name: ds_write_flat_store
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3, $vgpr4
+    $m0 = S_MOV_B32 0
+    DS_WRITE_B32_gfx9 $vgpr2, $vgpr3, 0, 0, implicit $m0, implicit $exec :: (store (s32) into `ptr addrspace(3) poison`)
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr4, 0, 0, implicit $exec, implicit $flat_scr :: (store (s32) into `ptr poison`)
+    S_ENDPGM 0
+...
+---
+#############################################################################
+# Multiple pending operations
+#############################################################################
+
+# Multiple BUFFER_LOAD_LDS followed by DS_READ
+# CHECK-LABEL: name: multiple_buffer_load_lds_ds_read
+# CHECK: BUFFER_LOAD_DWORD_LDS_IDXEN
+# CHECK: BUFFER_LOAD_DWORD_LDS_IDXEN
+# CHECK: S_WAITCNT {{.}}Vmcnt_0
+# CHECK-NEXT: DS_READ_B32_gfx9
+---
+name: multiple_buffer_load_lds_ds_read
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4
+    $m0 = S_MOV_B32 0
+    BUFFER_LOAD_DWORD_LDS_IDXEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4, 0, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison`), (store (s32) into `ptr addrspace(3) poison`)
+    BUFFER_LOAD_DWORD_LDS_IDXEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr4, 4, 0, 0, 0, implicit $exec, implicit $m0 :: (load (s32) from `ptr addrspace(1) poison` + 4), (store (s32) into `ptr addrspace(3) poison` + 4)
+    $vgpr2 = DS_READ_B32_gfx9 $vgpr1, 0, 0, implicit $m0, implicit $exec :: (load (s32) from `ptr addrspace(3) poison`)
+    S_ENDPGM 0
+...

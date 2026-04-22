@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# On gfx6 (e.g. tahiti) a VMEM return atomic holds its data source register on
+# the export counter (ExpCnt): it does not decrement ExpCnt until it has read its
+# data operand. A return atomic both reads its data operand and writes its result
+# to the SAME register (vdata is tied to the return value). Overwriting that
+# register afterwards is a write-after-read hazard against the data read, so it
+# needs a wait expcnt(0) first - even though the register is also the atomic's
+# result (which is tracked separately on vmcnt).
+#
+# Here BUFFER_ATOMIC_ADD_IDXEN_RTN reads and defines $vgpr1, and the following
+# V_MOV_B32 overwrites $vgpr1, so a wait expcnt(0) is required between them.
+
+---
+name: atomic_rtn_data_war_expcnt
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr1
+    ; CHECK-LABEL: name: atomic_rtn_data_war_expcnt
+    ; CHECK: renamable $vgpr1 = BUFFER_ATOMIC_ADD_IDXEN_RTN
+    ; CHECK: S_WAITCNT {{.*}}Expcnt_0
+    ; CHECK-NEXT: $vgpr1 = V_MOV_B32_e32 $sgpr1, implicit $exec
+    renamable $vgpr1 = BUFFER_ATOMIC_ADD_IDXEN_RTN killed renamable $vgpr1, killed renamable $vgpr2, renamable $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 1, implicit $exec :: (volatile dereferenceable load store (s32), addrspace 8)
+    $vgpr1 = V_MOV_B32_e32 $sgpr1, implicit $exec
+    S_ENDPGM 0
+...

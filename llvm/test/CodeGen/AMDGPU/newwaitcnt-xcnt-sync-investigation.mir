@@ -1,0 +1,98 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Investigation tests to understand old pass behavior for XCnt sync.
+#
+# To prove whether there's an implicit xcnt 0 when SMEM follows VMEM (or vice
+# versa), we need TWO WAR instructions: one for each type's address register.
+#
+# Result: Only the PREVIOUS type's entries are cleared, not the new type's.
+# - VMEM → SMEM: VMEM entries cleared, SMEM entry remains
+# - SMEM → VMEM: SMEM entries cleared, VMEM entry remains
+
+---
+# Test 1: VMEM then SMEM, then WAR on BOTH address registers.
+# SMEM clears VMEM's entry, but SMEM's own entry remains.
+# WAR on VMEM addr: no wait needed (cleared by SMEM)
+# WAR on SMEM addr: S_WAIT_XCNT 0 needed
+name: vmem_then_smem_war_on_both
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: vmem_then_smem_war_on_both
+    ; CHECK:      $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK-NEXT: $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK-NEXT: $vgpr0 = V_MOV_B32_e32
+    ; CHECK-NEXT: S_WAIT_XCNT 0
+    ; CHECK-NEXT: $sgpr0 = S_MOV_B32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+    $sgpr0 = S_MOV_B32 0
+...
+
+---
+# Test 2: Same but with an explicit S_WAIT_XCNT 0
+name: vmem_wait_smem_war_on_both
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: vmem_wait_smem_war_on_both
+    ; CHECK:      $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK-NEXT: S_WAIT_XCNT 0
+    ; CHECK-NEXT: $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK-NEXT: $vgpr0 = V_MOV_B32_e32
+    ; CHECK-NEXT: S_WAIT_XCNT 0
+    ; CHECK-NEXT: $sgpr0 = S_MOV_B32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    S_WAIT_XCNT 0
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+    $sgpr0 = S_MOV_B32 0
+...
+
+---
+# Test 3: SMEM then VMEM, then WAR on BOTH address registers.
+# VMEM clears SMEM's entry, but VMEM's own entry remains.
+# WAR on SMEM addr: no wait needed (cleared by VMEM)
+# WAR on VMEM addr: S_WAIT_XCNT 0 needed
+name: smem_then_vmem_war_on_both
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: smem_then_vmem_war_on_both
+    ; CHECK:      $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK-NEXT: $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK-NEXT: $sgpr0 = S_MOV_B32
+    ; CHECK-NEXT: S_WAIT_XCNT 0
+    ; CHECK-NEXT: $vgpr0 = V_MOV_B32_e32
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $sgpr0 = S_MOV_B32 0
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+
+---
+# Test 4: Same but with an explicit S_WAIT_XCNT 0
+name: smem_wait_vmem_war_on_both
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: smem_wait_vmem_war_on_both
+    ; CHECK:      $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK-NEXT: S_WAIT_XCNT 0
+    ; CHECK-NEXT: $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK-NEXT: $sgpr0 = S_MOV_B32
+    ; CHECK-NEXT: S_WAIT_XCNT 0
+    ; CHECK-NEXT: $vgpr0 = V_MOV_B32_e32
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    S_WAIT_XCNT 0
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $sgpr0 = S_MOV_B32 0
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...

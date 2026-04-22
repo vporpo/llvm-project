@@ -1,0 +1,33 @@
+# RUN: llc -mtriple=amdgcn -mcpu=bonaire -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=bonaire -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# On pre-gfx10 (bonaire), all VmCnt operations (loads and stores) use the same
+# event type (VMEM_ACCESS) and complete in order. A FLAT_STORE consumer reading
+# the result of the first of three buffer loads only needs vmcnt(2), not vmcnt(0).
+# The new pass must not over-wait to vmcnt(0) just because the consumer is a pure
+# FLAT instruction: what matters is whether the PENDING operations on the counter
+# have mixed types (e.g. VMEM + FLAT-that-can-be-LDS), not what the consumer is.
+# Here all pending ops are VMEM-only buffer loads (same type), so position-based
+# waits are safe.
+
+# CHECK-LABEL: name: flat_vmcnt_precision
+# CHECK:        BUFFER_LOAD_DWORD_OFFSET
+# CHECK:        BUFFER_LOAD_DWORD_OFFSET
+# CHECK:        BUFFER_LOAD_DWORD_OFFSET
+# CHECK-NEXT:   S_WAITCNT .Vmcnt_2
+# CHECK-NEXT:   FLAT_STORE_DWORD
+
+---
+name: flat_vmcnt_precision
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr4_vgpr5
+    renamable $vgpr0 = BUFFER_LOAD_DWORD_OFFSET renamable $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec :: (load (s32), addrspace 1)
+    renamable $vgpr1 = BUFFER_LOAD_DWORD_OFFSET renamable $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, implicit $exec :: (load (s32), addrspace 1)
+    renamable $vgpr2 = BUFFER_LOAD_DWORD_OFFSET renamable $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, implicit $exec :: (load (s32), addrspace 1)
+    FLAT_STORE_DWORD killed renamable $vgpr4_vgpr5, killed renamable $vgpr0, 0, 0, implicit $exec, implicit $flat_scr :: (store (s32), addrspace 0)
+    S_ENDPGM 0
+...

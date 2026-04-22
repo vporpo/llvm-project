@@ -16,10 +16,10 @@ define amdgpu_kernel void @single_atomic_rmw(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -45,10 +45,10 @@ define amdgpu_kernel void @atomic_rmw_back_to_back(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -57,8 +57,8 @@ define amdgpu_kernel void @atomic_rmw_back_to_back(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -67,8 +67,8 @@ define amdgpu_kernel void @atomic_rmw_back_to_back(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -104,10 +104,10 @@ define amdgpu_kernel void @atomic_rmw_with_alu(ptr addrspace(1) %ptr, i32 %a, i3
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -117,8 +117,8 @@ define amdgpu_kernel void @atomic_rmw_with_alu(ptr addrspace(1) %ptr, i32 %a, i3
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -128,8 +128,8 @@ define amdgpu_kernel void @atomic_rmw_with_alu(ptr addrspace(1) %ptr, i32 %a, i3
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -164,10 +164,10 @@ define amdgpu_kernel void @atomic_rmw_broken_by_global_load(ptr addrspace(1) %pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -176,8 +176,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_global_load(ptr addrspace(1) %pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -186,9 +186,9 @@ define amdgpu_kernel void @atomic_rmw_broken_by_global_load(ptr addrspace(1) %pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -222,10 +222,10 @@ define amdgpu_kernel void @atomic_rmw_broken_by_global_store(ptr addrspace(1) %p
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -234,8 +234,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_global_store(ptr addrspace(1) %p
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -247,9 +247,9 @@ define amdgpu_kernel void @atomic_rmw_broken_by_global_store(ptr addrspace(1) %p
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -283,10 +283,10 @@ define amdgpu_kernel void @atomic_rmw_broken_by_flat_load(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -295,8 +295,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_flat_load(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -305,8 +305,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_flat_load(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -340,10 +340,10 @@ define amdgpu_kernel void @atomic_rmw_broken_by_flat_store(ptr addrspace(1) %ptr
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -352,8 +352,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_flat_store(ptr addrspace(1) %ptr
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -365,8 +365,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_flat_store(ptr addrspace(1) %ptr
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -400,10 +400,10 @@ define amdgpu_kernel void @atomic_rmw_broken_by_smem_load(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -412,8 +412,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_smem_load(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -424,9 +424,9 @@ define amdgpu_kernel void @atomic_rmw_broken_by_smem_load(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -460,10 +460,10 @@ define amdgpu_kernel void @atomic_rmw_broken_by_atomic_store(ptr addrspace(1) %p
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -472,8 +472,8 @@ define amdgpu_kernel void @atomic_rmw_broken_by_atomic_store(ptr addrspace(1) %p
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -482,18 +482,18 @@ define amdgpu_kernel void @atomic_rmw_broken_by_atomic_store(ptr addrspace(1) %p
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_store_b32 v0, v1, s[2:3] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_xcnt 0x0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, 3
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -527,10 +527,10 @@ define amdgpu_kernel void @atomic_rmw_with_lds_load(ptr addrspace(1) %ptr, ptr a
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -539,8 +539,8 @@ define amdgpu_kernel void @atomic_rmw_with_lds_load(ptr addrspace(1) %ptr, ptr a
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -550,8 +550,8 @@ define amdgpu_kernel void @atomic_rmw_with_lds_load(ptr addrspace(1) %ptr, ptr a
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -585,10 +585,10 @@ define amdgpu_kernel void @atomic_rmw_with_lds_store(ptr addrspace(1) %ptr, ptr 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -597,8 +597,8 @@ define amdgpu_kernel void @atomic_rmw_with_lds_store(ptr addrspace(1) %ptr, ptr 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -610,8 +610,8 @@ define amdgpu_kernel void @atomic_rmw_with_lds_store(ptr addrspace(1) %ptr, ptr 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -645,10 +645,10 @@ define amdgpu_kernel void @atomic_rmw_with_flat_lds_load(ptr addrspace(1) %ptr, 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -657,8 +657,8 @@ define amdgpu_kernel void @atomic_rmw_with_flat_lds_load(ptr addrspace(1) %ptr, 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -681,8 +681,8 @@ define amdgpu_kernel void @atomic_rmw_with_flat_lds_load(ptr addrspace(1) %ptr, 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -717,10 +717,10 @@ define amdgpu_kernel void @atomic_rmw_with_flat_lds_store(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -729,8 +729,8 @@ define amdgpu_kernel void @atomic_rmw_with_flat_lds_store(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -756,8 +756,8 @@ define amdgpu_kernel void @atomic_rmw_with_flat_lds_store(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -797,10 +797,10 @@ define amdgpu_kernel void @atomic_rmw_borken_by_async_lds_copy(ptr addrspace(1) 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -809,8 +809,8 @@ define amdgpu_kernel void @atomic_rmw_borken_by_async_lds_copy(ptr addrspace(1) 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -823,9 +823,9 @@ define amdgpu_kernel void @atomic_rmw_borken_by_async_lds_copy(ptr addrspace(1) 
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -861,10 +861,10 @@ define amdgpu_kernel void @multiple_atomic_rmw_blocks(ptr addrspace(1) %ptr1, pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -873,8 +873,8 @@ define amdgpu_kernel void @multiple_atomic_rmw_blocks(ptr addrspace(1) %ptr1, pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -883,9 +883,9 @@ define amdgpu_kernel void @multiple_atomic_rmw_blocks(ptr addrspace(1) %ptr1, pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -894,8 +894,8 @@ define amdgpu_kernel void @multiple_atomic_rmw_blocks(ptr addrspace(1) %ptr1, pt
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:12 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -928,10 +928,10 @@ define amdgpu_kernel void @different_atomic_ops(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -940,8 +940,8 @@ define amdgpu_kernel void @different_atomic_ops(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_sub_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -950,8 +950,8 @@ define amdgpu_kernel void @different_atomic_ops(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_and_b32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -960,8 +960,8 @@ define amdgpu_kernel void @different_atomic_ops(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_or_b32 v0, v1, s[0:1] offset:12 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1005,9 +1005,9 @@ define amdgpu_kernel void @atomic_rmw_across_basic_blocks(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[2:3] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1016,8 +1016,8 @@ define amdgpu_kernel void @atomic_rmw_across_basic_blocks(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[2:3] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1043,9 +1043,9 @@ define amdgpu_kernel void @atomic_rmw_across_basic_blocks(ptr addrspace(1) %ptr,
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1108,9 +1108,9 @@ define amdgpu_kernel void @atomic_rmw_in_loop(ptr addrspace(1) %ptr, i32 %n) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[2:3] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1119,8 +1119,8 @@ define amdgpu_kernel void @atomic_rmw_in_loop(ptr addrspace(1) %ptr, i32 %n) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[2:3] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1179,9 +1179,9 @@ define amdgpu_kernel void @atomic_rmw_with_branch(ptr addrspace(1) %ptr, i32 %co
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[2:3] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1190,8 +1190,8 @@ define amdgpu_kernel void @atomic_rmw_with_branch(ptr addrspace(1) %ptr, i32 %co
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[2:3] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1230,9 +1230,9 @@ define amdgpu_kernel void @atomic_rmw_with_branch(ptr addrspace(1) %ptr, i32 %co
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1251,9 +1251,9 @@ define amdgpu_kernel void @atomic_rmw_with_branch(ptr addrspace(1) %ptr, i32 %co
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:12 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1278,9 +1278,9 @@ define amdgpu_kernel void @atomic_rmw_with_branch(ptr addrspace(1) %ptr, i32 %co
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:16 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1334,9 +1334,9 @@ define amdgpu_kernel void @atomic_rmw_fallthrough(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1345,8 +1345,8 @@ define amdgpu_kernel void @atomic_rmw_fallthrough(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:4 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1364,9 +1364,9 @@ define amdgpu_kernel void @atomic_rmw_fallthrough(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:8 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS
@@ -1375,8 +1375,8 @@ define amdgpu_kernel void @atomic_rmw_fallthrough(ptr addrspace(1) %ptr) {
 ; GFX1250-NEXT:    s_wait_loadcnt 0x0
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_wb scope:SCOPE_SYS
-; GFX1250-NEXT:    s_wait_storecnt 0x0
-; GFX1250-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-DAG:     s_wait_storecnt 0x0
+; GFX1250-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-NEXT:    global_atomic_add_u32 v0, v1, s[0:1] offset:12 scope:SCOPE_SYS
 ; GFX1250-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-NEXT:    global_inv scope:SCOPE_SYS

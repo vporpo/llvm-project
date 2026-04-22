@@ -543,6 +543,11 @@ static cl::opt<bool> EnableSetWavePriority("amdgpu-set-wave-priority",
                                            cl::desc("Adjust wave priority"),
                                            cl::init(false), cl::Hidden);
 
+static cl::opt<bool>
+    EnableNewInsertWaitcnts("amdgpu-enable-new-insert-waitcnts",
+                            cl::desc("Enable new waitcnt insertion pass"),
+                            cl::init(true), cl::Hidden);
+
 static cl::opt<bool> EnableScalarIRPasses(
   "amdgpu-scalar-ir-passes",
   cl::desc("Enable scalar IR passes"),
@@ -717,6 +722,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAMDGPUTarget() {
   initializeAMDGPUInsertDelayAluLegacyPass(*PR);
   initializeAMDGPULowerVGPREncodingLegacyPass(*PR);
   initializeSIInsertHardClausesLegacyPass(*PR);
+  initializeAMDGPUNewInsertWaitcntsLegacyPass(*PR);
   initializeSIInsertWaitcntsLegacyPass(*PR);
   initializeSIModeRegisterLegacyPass(*PR);
   initializeSIWholeQuadModeLegacyPass(*PR);
@@ -2017,7 +2023,10 @@ void GCNPassConfig::addPreEmitPass() {
   if (isPassEnabled(EnableVOPD, CodeGenOptLevel::Less))
     addPass(&GCNCreateVOPDID);
   addPass(createSIMemoryLegalizerPass());
-  addPass(createSIInsertWaitcntsPass());
+  if (EnableNewInsertWaitcnts)
+    addPass(createAMDGPUNewInsertWaitcntsPass());
+  else
+    addPass(createSIInsertWaitcntsPass());
 
   addPass(createSIModeRegisterPass());
 
@@ -2725,7 +2734,10 @@ void AMDGPUCodeGenPassBuilder::addPreEmitPass(PassManagerWrapper &PMW) const {
   }
 
   addMachineFunctionPass(SIMemoryLegalizerPass(), PMW);
-  addMachineFunctionPass(SIInsertWaitcntsPass(), PMW);
+  if (EnableNewInsertWaitcnts)
+    addMachineFunctionPass(AMDGPUNewInsertWaitcntsPass(), PMW);
+  else
+    addMachineFunctionPass(SIInsertWaitcntsPass(), PMW);
 
   addMachineFunctionPass(SIModeRegisterPass(), PMW);
 

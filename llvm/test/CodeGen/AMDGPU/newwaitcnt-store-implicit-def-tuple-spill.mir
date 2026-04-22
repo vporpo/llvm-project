@@ -1,0 +1,36 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1031 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1031 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A GISel tuple spill emits the first BUFFER_STORE with an implicit-def of the
+# whole vgpr tuple (a liveness artifact, not a real result) plus an implicit use
+# of the tuple. The following spill stores read sub-registers of that tuple.
+# Stores never produce a register result, so the implicit-def must not create a
+# StoreCnt/VsCnt RAW hazard: no s_waitcnt_vscnt may be inserted between the
+# stores. The old pass inserts none.
+
+---
+name: store_implicit_def_tuple_spill
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 0, size: 32, alignment: 4 }
+body: |
+  ; CHECK-LABEL: name: store_implicit_def_tuple_spill
+  ; CHECK: BUFFER_STORE_DWORD_OFFSET killed $vgpr0
+  ; CHECK-NOT: S_WAITCNT_VSCNT
+  ; CHECK: BUFFER_STORE_DWORD_OFFSET killed $vgpr1
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, $vgpr8, $vgpr9, $vgpr10, $vgpr11, $vgpr12, $vgpr13, $vgpr14, $vgpr0
+
+    undef renamable $vgpr0 = KILL renamable $vgpr0, implicit-def $vgpr0_vgpr1_vgpr2_vgpr3_vgpr4_vgpr5_vgpr6_vgpr7, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 $vgpr14, implicit $exec, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $vgpr13, implicit $exec, implicit $exec
+    $vgpr3 = V_MOV_B32_e32 $vgpr12, implicit $exec, implicit $exec
+    $vgpr4 = V_MOV_B32_e32 $vgpr11, implicit $exec, implicit $exec
+    $vgpr5 = V_MOV_B32_e32 $vgpr10, implicit $exec, implicit $exec
+    $vgpr6 = V_MOV_B32_e32 $vgpr9, implicit $exec, implicit $exec
+    $vgpr7 = V_MOV_B32_e32 $vgpr8, implicit $exec, implicit $exec
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 12, 0, 0, implicit $exec, implicit-def $vgpr0_vgpr1_vgpr2_vgpr3_vgpr4_vgpr5_vgpr6_vgpr7, implicit $vgpr0_vgpr1_vgpr2_vgpr3_vgpr4_vgpr5_vgpr6_vgpr7 :: (store (s32) into %stack.0, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 16, 0, 0, implicit $exec :: (store (s32) into %stack.0 + 4, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 20, 0, 0, implicit $exec :: (store (s32) into %stack.0 + 8, addrspace 5)
+    S_ENDPGM 0
+...

@@ -1,0 +1,35 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# S_BARRIER_SIGNAL_ISFIRST writes SCC asynchronously via KmCnt. When
+# S_BARRIER_WAIT with the same barrier ID follows, the SCC write is
+# guaranteed to have completed. The soft S_WAIT_KMCNT before the return
+# should be simplified away as redundant after the barrier clears KmCnt.
+
+# CHECK-LABEL: name: barrier_signal_isfirst_clears_kmcnt
+# CHECK:        S_BARRIER_SIGNAL_ISFIRST_IMM
+# CHECK-NEXT:   S_BARRIER_WAIT
+# CHECK-NOT:    S_WAIT_KMCNT
+# CHECK:        S_SETPC_B64_return
+
+---
+name: barrier_signal_isfirst_clears_kmcnt
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: false
+body: |
+  bb.0:
+    liveins: $sgpr30_sgpr31
+    S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+    S_WAIT_EXPCNT 0
+    S_WAIT_SAMPLECNT 0
+    S_WAIT_BVHCNT 0
+    S_WAIT_KMCNT 0
+    S_CMP_EQ_U32 0, 0, implicit-def $scc
+    S_BARRIER_SIGNAL_ISFIRST_IMM -1, implicit-def $scc, implicit killed $scc
+    S_BARRIER_WAIT -1
+    renamable $sgpr0 = S_CSELECT_B32 -1, 0, implicit killed $scc
+    renamable $vgpr0 = V_CNDMASK_B32_e64 0, 0, 0, 1, killed $sgpr0, implicit $exec
+    S_WAIT_KMCNT_soft 0
+    S_SETPC_B64_return killed $sgpr30_sgpr31, implicit killed $vgpr0
+...

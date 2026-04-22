@@ -1,0 +1,52 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test implicit XCnt sync with merged state from different CFG paths.
+#
+# CFG:
+#   bb.0: 2 VMEM loads, branch to bb.2 or fall through to bb.1
+#   bb.1: SMEM load (triggers implicit sync, clears VMEMs)
+#   bb.2: WAR on first VMEM's address
+#
+# At bb.2 merge:
+#   - From bb.0→bb.2: XCnt has [VMEM1, VMEM2]
+#   - From bb.1→bb.2: XCnt has [SMEM] (VMEMs cleared by implicit sync in bb.1)
+#   - Merged: XCnt has [VMEM1, {VMEM2, SMEM}]
+#
+# The SMEM in bb.1 triggers implicit XCnt sync which clears VMEMs for that path.
+# For the bb.0→bb.2 path, xcnt=1 would be sufficient (VMEMs are in-order).
+# However, both passes conservatively emit xcnt=0 due to SMEM in merged state.
+
+---
+name: xcnt_implicit_sync_merge
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: xcnt_implicit_sync_merge
+  ; CHECK: bb.0:
+  ; CHECK:      $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+  ; CHECK-NEXT: $vgpr5 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+  ; CHECK-NEXT: S_CBRANCH_SCC1 %bb.2, implicit $scc
+
+  ; CHECK: bb.1:
+  ; CHECK:      $sgpr4 = S_LOAD_DWORD_IMM $sgpr0_sgpr1
+
+  ; CHECK: bb.2:
+  ; xcnt=0 is conservative; xcnt=1 would suffice for bb.0→bb.2 path.
+  ; CHECK-NOT:  S_WAIT_XCNT
+  ; CHECK: $vgpr0 = V_MOV_B32_e32 0
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $scc
+    $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr5 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+    S_CBRANCH_SCC1 %bb.2, implicit $scc
+
+  bb.1:
+    liveins: $sgpr0_sgpr1
+    $sgpr4 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0
+
+  bb.2:
+    liveins: $vgpr0_vgpr1
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...

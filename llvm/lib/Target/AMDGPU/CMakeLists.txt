@@ -53,6 +53,7 @@ add_llvm_target(AMDGPUCodeGen
   AMDGPUCallLowering.cpp
   AMDGPUCodeGenPrepare.cpp
   AMDGPUCombinerHelper.cpp
+  AMDGPUCounters.cpp
   AMDGPUCtorDtorLowering.cpp
   AMDGPUExportClustering.cpp
   AMDGPUExportKernelRuntimeHandles.cpp
@@ -63,6 +64,8 @@ add_llvm_target(AMDGPUCodeGen
   AMDGPUHSAMetadataStreamer.cpp
   AMDGPUHWEvents.cpp
   AMDGPUInsertDelayAlu.cpp
+  AMDGPUNewInsertWaitcnts.cpp
+  AMDGPUResourceTracker.cpp
   AMDGPUInstCombineIntrinsic.cpp
   AMDGPUUniformIntrinsicCombine.cpp
   AMDGPUInstrInfo.cpp

@@ -29,6 +29,8 @@ createAMDGPUTargetMachine(const llvm::Triple &TT, llvm::StringRef CPU,
 class AMDGPUTestBase : public testing::Test {
 public:
   static void SetUpTestSuite();
+  /// Shared global sequence number for ResourceTracker construction in tests.
+  uint64_t TestSeqNum = 0;
 };
 
 class AMDGPUCodeGenTestBase : public llvm::CodeGenTestBase {

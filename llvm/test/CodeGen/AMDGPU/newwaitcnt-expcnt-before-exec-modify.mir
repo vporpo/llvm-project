@@ -1,0 +1,40 @@
+# RUN: llc -mtriple=amdgcn -mcpu=bonaire -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=bonaire -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# When a GDS instruction's GPR lock is pending on expcnt and a subsequent
+# instruction modifies EXEC, the pass must emit expcnt(0) before the EXEC
+# modification. Export and GDS do not read EXEC until after the operation
+# is granted, so overwriting EXEC while a GPR lock is held is unsafe.
+
+# CHECK-LABEL: name: gds_expcnt_before_exec_restore
+# CHECK:      bb.2:
+# CHECK:        S_WAITCNT {{.*}}Expcnt_0
+# CHECK-NEXT:   $exec = S_OR_B64
+
+---
+name: gds_expcnt_before_exec_restore
+tracksRegLiveness: true
+body: |
+  bb.0:
+    successors: %bb.1(0x40000000), %bb.2(0x40000000)
+    liveins: $sgpr0, $vgpr0
+
+    V_CMP_NE_U32_e32 0, $vgpr0, implicit-def $vcc, implicit $exec
+    renamable $vgpr1 = IMPLICIT_DEF
+    $sgpr2_sgpr3 = S_AND_SAVEEXEC_B64 killed $vcc, implicit-def $exec, implicit-def $scc, implicit $exec
+    S_CBRANCH_EXECZ %bb.2, implicit $exec
+
+  bb.1:
+    successors: %bb.2(0x80000000)
+    liveins: $sgpr0, $sgpr2_sgpr3, $vgpr0
+
+    $m0 = S_MOV_B32 killed $sgpr0
+    renamable $vgpr1 = DS_ORDERED_COUNT killed renamable $vgpr0, 4868, implicit $m0, implicit $exec :: (load store (s32), addrspace 2)
+
+  bb.2:
+    liveins: $sgpr2_sgpr3, $vgpr1
+
+    $exec = S_OR_B64 $exec, killed renamable $sgpr2_sgpr3, implicit-def $scc
+    $vgpr0 = V_MOV_B32_e32 killed $vgpr1, implicit $exec, implicit $exec
+    SI_RETURN_TO_EPILOG killed $vgpr0
+...

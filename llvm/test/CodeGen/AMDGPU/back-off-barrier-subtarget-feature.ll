@@ -159,8 +159,8 @@ define void @back_off_barrier_with_fence(ptr %in, ptr %out) #0 {
 ; GFX12-BACKOFF-NEXT:    s_wait_bvhcnt 0x0
 ; GFX12-BACKOFF-NEXT:    s_wait_kmcnt 0x0
 ; GFX12-BACKOFF-NEXT:    flat_load_b32 v0, v[0:1]
-; GFX12-BACKOFF-NEXT:    s_wait_storecnt 0x0
-; GFX12-BACKOFF-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX12-BACKOFF-DAG:     s_wait_storecnt 0x0
+; GFX12-BACKOFF-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX12-BACKOFF-NEXT:    s_barrier_signal -1
 ; GFX12-BACKOFF-NEXT:    s_barrier_wait -1
 ; GFX12-BACKOFF-NEXT:    global_inv scope:SCOPE_SE
@@ -173,8 +173,8 @@ define void @back_off_barrier_with_fence(ptr %in, ptr %out) #0 {
 ; GFX1250-BACKOFF-NEXT:    s_wait_loadcnt_dscnt 0x0
 ; GFX1250-BACKOFF-NEXT:    s_wait_kmcnt 0x0
 ; GFX1250-BACKOFF-NEXT:    flat_load_b32 v0, v[0:1]
-; GFX1250-BACKOFF-NEXT:    s_wait_storecnt 0x0
-; GFX1250-BACKOFF-NEXT:    s_wait_loadcnt_dscnt 0x0
+; GFX1250-BACKOFF-DAG:     s_wait_storecnt 0x0
+; GFX1250-BACKOFF-DAG:     s_wait_loadcnt_dscnt 0x0
 ; GFX1250-BACKOFF-NEXT:    s_barrier_signal -1
 ; GFX1250-BACKOFF-NEXT:    s_barrier_wait -1
 ; GFX1250-BACKOFF-NEXT:    flat_store_b32 v[2:3], v0

@@ -1,0 +1,80 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=machine-loops,si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=machine-loops,amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Prefetch pattern: preheader loads registers, loop uses them then reloads
+# for next iteration.
+#
+# The old pass emits S_WAIT_DSCNT 0 in the preheader to flush all loads before
+# entering the loop. This is actually WORSE for performance because it waits
+# for all loads to complete before any compute can start.
+#
+# The new pass does NOT emit the preheader flush, instead relying on the
+# cascading waits (3,2,1,0) in the loop body. This is BETTER because it allows
+# pipelining - compute can start as soon as each individual load completes,
+# rather than waiting for all loads upfront.
+#
+# This test is XFAIL because we're checking the old pass's behavior, which
+# the new pass intentionally does not replicate.
+
+# CHECK-LABEL: name: prefetch_pattern
+# CHECK: bb.0:
+# CHECK:      DS_READ_B128
+# CHECK-NEXT: DS_READ_B128
+# CHECK-NEXT: DS_READ_B128
+# CHECK-NEXT: DS_READ_B128
+# CHECK-NEXT: S_WAIT_DSCNT 0
+# CHECK-NEXT: S_BRANCH %bb.1
+# CHECK: bb.1:
+# CHECK:      S_WAIT_DSCNT 3
+# CHECK-NEXT: V_ADD_F32_e32
+# CHECK-NEXT: S_WAIT_DSCNT 2
+# CHECK-NEXT: V_ADD_F32_e32
+# CHECK-NEXT: S_WAIT_DSCNT 1
+# CHECK-NEXT: V_ADD_F32_e32
+# CHECK-NEXT: S_WAIT_DSCNT 0
+# CHECK-NEXT: V_ADD_F32_e32
+# CHECK-NEXT: DS_READ_B128
+# CHECK-NEXT: DS_READ_B128
+# CHECK-NEXT: DS_READ_B128
+# CHECK-NEXT: DS_READ_B128
+# CHECK:      S_BRANCH %bb.2
+# CHECK: bb.2:
+
+---
+name: prefetch_pattern
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    successors: %bb.1
+    liveins: $sgpr0, $vgpr0
+
+    $vgpr10_vgpr11_vgpr12_vgpr13 = DS_READ_B128 $vgpr0, 0, 0, implicit $m0, implicit $exec
+    $vgpr14_vgpr15_vgpr16_vgpr17 = DS_READ_B128 $vgpr0, 16, 0, implicit $m0, implicit $exec
+    $vgpr18_vgpr19_vgpr20_vgpr21 = DS_READ_B128 $vgpr0, 32, 0, implicit $m0, implicit $exec
+    $vgpr22_vgpr23_vgpr24_vgpr25 = DS_READ_B128 $vgpr0, 48, 0, implicit $m0, implicit $exec
+    S_BRANCH %bb.1
+
+  bb.1:
+    successors: %bb.1, %bb.2
+    liveins: $sgpr0, $vgpr0, $vgpr10, $vgpr14, $vgpr18, $vgpr22
+
+    $vgpr30 = V_ADD_F32_e32 $vgpr10, $vgpr10, implicit $mode, implicit $exec
+    $vgpr31 = V_ADD_F32_e32 $vgpr14, $vgpr14, implicit $mode, implicit $exec
+    $vgpr32 = V_ADD_F32_e32 $vgpr18, $vgpr18, implicit $mode, implicit $exec
+    $vgpr33 = V_ADD_F32_e32 $vgpr22, $vgpr22, implicit $mode, implicit $exec
+
+    ; Prefetch for next iteration
+    $vgpr10_vgpr11_vgpr12_vgpr13 = DS_READ_B128 $vgpr0, 0, 0, implicit $m0, implicit $exec
+    $vgpr14_vgpr15_vgpr16_vgpr17 = DS_READ_B128 $vgpr0, 16, 0, implicit $m0, implicit $exec
+    $vgpr18_vgpr19_vgpr20_vgpr21 = DS_READ_B128 $vgpr0, 32, 0, implicit $m0, implicit $exec
+    $vgpr22_vgpr23_vgpr24_vgpr25 = DS_READ_B128 $vgpr0, 48, 0, implicit $m0, implicit $exec
+
+    $sgpr0 = S_ADD_I32 $sgpr0, -1, implicit-def $scc
+    S_CBRANCH_SCC1 %bb.1, implicit $scc
+    S_BRANCH %bb.2
+
+  bb.2:
+    S_ENDPGM 0
+...

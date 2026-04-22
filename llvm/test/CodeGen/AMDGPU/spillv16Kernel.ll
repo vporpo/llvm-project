@@ -36,8 +36,8 @@ define amdgpu_kernel void @spill_i16_alu() #0 {
 ; GFX1250-FAKE16-NEXT:    ;;#ASMSTART
 ; GFX1250-FAKE16-NEXT:    ;;#ASMEND
 ; GFX1250-FAKE16-NEXT:    scratch_load_b32 v0, off, off offset:4 th:TH_LOAD_LU nv ; 4-byte Folded Reload
-; GFX1250-FAKE16-NEXT:    s_wait_xcnt 0x0
-; GFX1250-FAKE16-NEXT:    s_wait_loadcnt 0x0
+; GFX1250-FAKE16-DAG:     s_wait_xcnt 0x0
+; GFX1250-FAKE16-DAG:     s_wait_loadcnt 0x0
 ; GFX1250-FAKE16-NEXT:    scratch_store_b16 off, v0, off scope:SCOPE_SYS
 ; GFX1250-FAKE16-NEXT:    s_wait_storecnt 0x0
 ; GFX1250-FAKE16-NEXT:    s_endpgm

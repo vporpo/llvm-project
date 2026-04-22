@@ -1,0 +1,269 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -verify-machineinstrs -run-pass si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -verify-machineinstrs -run-pass amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Test ASYNCMARK and WAIT_ASYNCMARK lowering for async buffer loads to LDS.
+# ASYNCMARK tracks the vmcnt at that point, and WAIT_ASYNCMARK(N) waits for
+# the Nth asyncmark from the end.
+#
+# The IsAsync operand (last operand = 1) on BUFFER_LOAD_DWORD_LDS_* indicates
+# this is an async LDS DMA load that should be tracked via ASYNCMARK rather
+# than normal memory aliasing checks.
+
+---
+name: asyncmark_basic
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0
+
+    ; Three async buffer loads to LDS, with asyncmarks after each.
+    ; WAIT_ASYNCMARK(1) should wait for vmcnt(2) - the second asyncmark.
+
+    ; CHECK-LABEL: name: asyncmark_basic
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: WAIT_ASYNCMARK 1, implicit $exec
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_2
+    ; CHECK-NEXT: $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    ; CHECK-NEXT: S_ENDPGM 0
+
+    ; Async buffer load to LDS at offset 0 (IsAsync=1 means tracked via ASYNCMARK)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for first load
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 4 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for second load
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 8 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; Wait for asyncmark index 1 (second from end = second load)
+    ; This should emit vmcnt(2) since we need to wait for loads 0 and 1.
+    WAIT_ASYNCMARK 1, implicit $exec
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    S_ENDPGM 0
+...
+
+---
+name: asyncmark_wait_for_first
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0
+
+    ; WAIT_ASYNCMARK(2) should wait for the first asyncmark, which is vmcnt(2)
+    ; since there are 3 pending loads at that point (including the one after).
+
+    ; CHECK-LABEL: name: asyncmark_wait_for_first
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: WAIT_ASYNCMARK 2, implicit $exec
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_2
+    ; CHECK-NEXT: $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    ; CHECK-NEXT: S_ENDPGM 0
+
+    ; Async buffer load to LDS at offset 0 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for first load
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 4 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for second load
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 8 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for third load
+    ASYNCMARK implicit $exec
+    ; Wait for asyncmark index 2 (third from end = first load)
+    ; This should emit vmcnt(2) since we need to wait for the first load only.
+    WAIT_ASYNCMARK 2, implicit $exec
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    S_ENDPGM 0
+...
+
+---
+name: asyncmark_wait_for_most_recent
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0
+
+    ; WAIT_ASYNCMARK(0) should wait for the most recent asyncmark, which is
+    ; vmcnt(0) since the most recent load just completed.
+
+    ; CHECK-LABEL: name: asyncmark_wait_for_most_recent
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: WAIT_ASYNCMARK 0, implicit $exec
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_0
+    ; CHECK-NEXT: $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    ; CHECK-NEXT: S_ENDPGM 0
+
+    ; Async buffer load to LDS at offset 0 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for first load
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 4 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for second load
+    ASYNCMARK implicit $exec
+    ; Wait for asyncmark index 0 (most recent = second load)
+    ; This should emit vmcnt(0) since we wait for all loads.
+    WAIT_ASYNCMARK 0, implicit $exec
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    S_ENDPGM 0
+...
+
+---
+name: asyncmark_multi_bb
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; Test asyncmark dataflow across multiple basic blocks.
+  ; Asyncmarks in bb.0, more loads in bb.1, wait in bb.2.
+
+  ; CHECK-LABEL: name: asyncmark_multi_bb
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0
+
+    ; CHECK: bb.0:
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: S_BRANCH %bb.1
+
+    ; Async buffer load to LDS at offset 0 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for first load
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 4 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for second load
+    ASYNCMARK implicit $exec
+    S_BRANCH %bb.1
+
+  bb.1:
+    ; CHECK: bb.1:
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: S_BRANCH %bb.2
+
+    ; Async buffer load to LDS at offset 8 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for third load
+    ASYNCMARK implicit $exec
+    S_BRANCH %bb.2
+
+  bb.2:
+    ; WAIT_ASYNCMARK(1) should wait for the second asyncmark (from bb.0).
+    ; 3 total loads, second asyncmark is at index 1, so wait = 3 - 1 - 1 = 1.
+
+    ; CHECK: bb.2:
+    ; CHECK: WAIT_ASYNCMARK 1, implicit $exec
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_1
+    ; CHECK-NEXT: $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    ; CHECK-NEXT: S_ENDPGM 0
+
+    ; Wait for asyncmark index 1 (second from end = second load from bb.0)
+    WAIT_ASYNCMARK 1, implicit $exec
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    S_ENDPGM 0
+...
+
+---
+name: asyncmark_diamond_cfg
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; Test asyncmark dataflow with diamond CFG pattern.
+  ; One branch has more asyncmarks than the other to test merge behavior.
+  ; bb.1 path: 1 load + 1 asyncmark (total 2 asyncmarks including bb.0)
+  ; bb.2 path: 3 loads + 3 asyncmarks (total 4 asyncmarks including bb.0)
+  ; At merge, we must use the conservative (smaller) count from bb.1 path.
+
+  ; CHECK-LABEL: name: asyncmark_diamond_cfg
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0, $scc
+
+    ; CHECK: bb.0:
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: S_CBRANCH_SCC1 %bb.2, implicit $scc
+
+    ; Async buffer load to LDS at offset 0 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for first load
+    ASYNCMARK implicit $exec
+    S_CBRANCH_SCC1 %bb.2, implicit $scc
+
+  bb.1:
+    ; Short path: 1 additional load + asyncmark
+
+    ; CHECK: bb.1:
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: S_BRANCH %bb.3
+
+    ; Async buffer load to LDS at offset 4 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position for second load (short path)
+    ASYNCMARK implicit $exec
+    S_BRANCH %bb.3
+
+  bb.2:
+    ; Long path: 3 additional loads + asyncmarks
+
+    ; CHECK: bb.2:
+    ; CHECK: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 12, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 16, 0, 0, 1, implicit $exec, implicit $m0
+    ; CHECK-NEXT: ASYNCMARK implicit $exec
+    ; CHECK-NEXT: S_BRANCH %bb.3
+
+    ; Async buffer load to LDS at offset 8 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 12 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 12, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position
+    ASYNCMARK implicit $exec
+    ; Async buffer load to LDS at offset 16 (IsAsync=1)
+    BUFFER_LOAD_DWORD_LDS_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 16, 0, 0, 1, implicit $exec, implicit $m0
+    ; Mark vmcnt position
+    ASYNCMARK implicit $exec
+    S_BRANCH %bb.3
+
+  bb.3:
+    ; At merge point, WAIT_ASYNCMARK(1) waits for the first asyncmark (from bb.0).
+    ; From bb.1 path: 2 asyncmarks total, so vmcnt(1) for first asyncmark.
+    ; From bb.2 path: 4 asyncmarks total, so vmcnt(3) for first asyncmark.
+    ; Merge takes conservative value: vmcnt(1) (from shorter bb.1 path).
+
+    ; CHECK: bb.3:
+    ; CHECK: WAIT_ASYNCMARK 1, implicit $exec
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_1
+    ; CHECK-NEXT: $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    ; CHECK-NEXT: S_ENDPGM 0
+
+    ; Wait for asyncmark index 1 (first asyncmark from bb.0)
+    ; Conservative merge: bb.1 has 2 loads, bb.2 has 4 loads, use min = vmcnt(1)
+    WAIT_ASYNCMARK 1, implicit $exec
+    $vgpr1 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    S_ENDPGM 0
+...

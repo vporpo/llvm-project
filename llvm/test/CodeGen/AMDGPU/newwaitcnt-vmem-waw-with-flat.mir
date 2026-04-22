@@ -1,0 +1,57 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX9
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX9
+
+# Test VMEM WAW behavior with FLAT and different VmemTypes.
+#
+# On GFX9 (hasVmemWriteVgprInOrder), VGPR writes from VMEM instructions of the
+# same VmemType happen in program order. The WAW skip applies when:
+# 1. Both SrcMI and DstMI are VMEM-only (not FLAT)
+# 2. Both have the same VmemType (NOSAMPLER, SAMPLER, or BVH)
+# 3. The subtarget has VmemWriteVgprInOrder
+#
+# Different VmemTypes can complete out of order, so a wait is still needed.
+
+---
+# FLAT→GLOBAL WAW: skip vmcnt (WAW skip takes precedence over FLAT workaround)
+name: flat_global_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: flat_global_waw
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec
+...
+
+---
+# NOSAMPLER→SAMPLER WAW: requires vmcnt=0 (different VmemTypes)
+name: nosampler_sampler_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, $vgpr0_vgpr1_vgpr2_vgpr3
+    ; GFX9-LABEL: name: nosampler_sampler_waw
+    ; GFX9: IMAGE_LOAD_V1_V4
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX9-NEXT: IMAGE_SAMPLE_L_V1_V4
+    $vgpr4 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 2, -1, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+    $vgpr4 = IMAGE_SAMPLE_L_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 8, 0, 0, 0, 0, 0, -1, 0, implicit $exec :: (load (s128))
+...
+
+---
+# NOSAMPLER→NOSAMPLER WAW: skip vmcnt (same VmemType)
+name: nosampler_nosampler_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $vgpr0_vgpr1_vgpr2_vgpr3
+    ; GFX9-LABEL: name: nosampler_nosampler_waw
+    ; GFX9: IMAGE_LOAD_V1_V4
+    ; GFX9-NOT: S_WAITCNT
+    ; GFX9-NEXT: IMAGE_LOAD_V1_V4
+    $vgpr4 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 2, -1, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+    $vgpr4 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 2, -1, 0, 0, 0, 0, 0, 4, implicit $exec :: (load (s128))
+...

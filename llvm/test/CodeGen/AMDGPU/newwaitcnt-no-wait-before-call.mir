@@ -1,0 +1,73 @@
+# RUN: llc -mtriple=amdgcn--amdpal -mcpu=gfx1200 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn--amdpal -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# A call - ordinary (SI_CALL) or tail (SI_TCRETURN) - transfers control to the
+# callee, which waits for any still-pending operations itself via the waits
+# inserted at its function entry. So the caller does not wait before the call:
+# not for a VGPR argument's producer, nor (for a tail call, which is also a
+# return) for unrelated pending loads. The new pass must match the old pass and
+# emit no wait at these sites.
+
+--- |
+  declare void @callee()
+  define void @tail_call_arg() { ret void }
+  define void @tail_call_unrelated_load() { ret void }
+  define void @ordinary_call_arg() { ret void }
+...
+
+# Tail call whose VGPR argument ($vgpr40) was just loaded: no wait for the load.
+---
+name: tail_call_arg
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: false
+body: |
+  ; CHECK-LABEL: name: tail_call_arg
+  ; CHECK: SCRATCH_LOAD_DWORD_SADDR
+  ; CHECK-NOT: S_WAIT_LOADCNT
+  ; CHECK: SI_TCRETURN
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr32
+
+    renamable $vgpr40 = SCRATCH_LOAD_DWORD_SADDR $sgpr32, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32) from `ptr addrspace(5) poison`, addrspace 5)
+    SI_TCRETURN killed renamable $sgpr0_sgpr1, @callee, 0, csr_amdgpu_si_gfx, implicit $vgpr40
+...
+
+# Tail call with an unrelated pending load (not an operand): a tail call is not a
+# plain return, so it must not flush pending counters either.
+---
+name: tail_call_unrelated_load
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: false
+body: |
+  ; CHECK-LABEL: name: tail_call_unrelated_load
+  ; CHECK: SCRATCH_LOAD_DWORD_SADDR
+  ; CHECK-NOT: S_WAIT_LOADCNT
+  ; CHECK: SI_TCRETURN
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr32, $vgpr0
+
+    renamable $vgpr40 = SCRATCH_LOAD_DWORD_SADDR $sgpr32, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32) from `ptr addrspace(5) poison`, addrspace 5)
+    SI_TCRETURN killed renamable $sgpr0_sgpr1, @callee, 0, csr_amdgpu_si_gfx, implicit $vgpr0
+...
+
+# Ordinary call whose VGPR argument ($vgpr0) was just loaded: no wait for the
+# load before the call.
+---
+name: ordinary_call_arg
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: false
+body: |
+  ; CHECK-LABEL: name: ordinary_call_arg
+  ; CHECK: SCRATCH_LOAD_DWORD_SADDR
+  ; CHECK-NOT: S_WAIT_LOADCNT
+  ; CHECK: SI_CALL
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr32, $sgpr30_sgpr31
+
+    renamable $vgpr0 = SCRATCH_LOAD_DWORD_SADDR $sgpr32, 0, 0, implicit $exec, implicit $flat_scr :: (load (s32) from `ptr addrspace(5) poison`, addrspace 5)
+    dead $sgpr30_sgpr31 = SI_CALL killed renamable $sgpr0_sgpr1, @callee, csr_amdgpu_si_gfx, implicit $vgpr0
+    S_ENDPGM 0
+...

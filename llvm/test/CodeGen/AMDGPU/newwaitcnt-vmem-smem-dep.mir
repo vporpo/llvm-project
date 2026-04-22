@@ -1,0 +1,67 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -amdgpu-smem-vmem-dep-aa=true -o - %s | FileCheck %s --check-prefix=AA
+
+# VMEM load followed by SMEM store: the VMEM load must complete before the
+# SMEM store overwrites the data (WAR).
+
+# Same pointer: both default (Value* match) and AA modes insert vmcnt(0).
+# CHECK-LABEL: name: vmem_smem_dep_same_ptr
+# CHECK:      GLOBAL_LOAD_DWORD_SADDR
+# CHECK-NEXT: S_WAITCNT .Vmcnt_0
+# CHECK-NEXT: S_STORE_DWORD_IMM
+
+# AA-LABEL: name: vmem_smem_dep_same_ptr
+# AA:      GLOBAL_LOAD_DWORD_SADDR
+# AA-NEXT: S_WAITCNT .Vmcnt_0
+# AA-NEXT: S_STORE_DWORD_IMM
+
+# Different pointers: default mode (Value* match) does NOT insert a wait.
+# AA mode detects the potential alias and inserts vmcnt(0).
+# CHECK-LABEL: name: vmem_smem_dep_diffptr
+# CHECK:      GLOBAL_LOAD_DWORD_SADDR
+# CHECK-NOT:  S_WAITCNT
+# CHECK:      S_STORE_DWORD_IMM
+
+# AA-LABEL: name: vmem_smem_dep_diffptr
+# AA:      GLOBAL_LOAD_DWORD_SADDR
+# AA-NEXT: S_WAITCNT .Vmcnt_0
+# AA-NEXT: S_STORE_DWORD_IMM
+
+--- |
+  define amdgpu_kernel void @vmem_smem_dep_same_ptr(ptr addrspace(1) %ptr) {
+    %val = load i32, ptr addrspace(1) %ptr
+    store i32 0, ptr addrspace(1) %ptr
+    ret void
+  }
+  define amdgpu_kernel void @vmem_smem_dep_diffptr(ptr addrspace(1) %ptr1, ptr addrspace(1) %ptr2) {
+    %val = load i32, ptr addrspace(1) %ptr1
+    store i32 0, ptr addrspace(1) %ptr2
+    ret void
+  }
+...
+---
+name: vmem_smem_dep_same_ptr
+tracksRegLiveness: true
+machineFunctionInfo:
+  scratchRSrcReg: '$sgpr96_sgpr97_sgpr98_sgpr99'
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $vgpr0, $vgpr1, $sgpr4
+
+    renamable $vgpr0 = GLOBAL_LOAD_DWORD_SADDR renamable $sgpr0_sgpr1, renamable $vgpr1, 0, 0, implicit $exec :: (load (s32) from %ir.ptr, addrspace 1)
+    S_STORE_DWORD_IMM renamable $sgpr4, renamable $sgpr0_sgpr1, 0, 0 :: (store (s32) into %ir.ptr, addrspace 1)
+    S_ENDPGM 0
+...
+---
+name: vmem_smem_dep_diffptr
+tracksRegLiveness: true
+machineFunctionInfo:
+  scratchRSrcReg: '$sgpr96_sgpr97_sgpr98_sgpr99'
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr2_sgpr3, $vgpr0, $vgpr1, $sgpr4
+
+    renamable $vgpr0 = GLOBAL_LOAD_DWORD_SADDR renamable $sgpr0_sgpr1, renamable $vgpr1, 0, 0, implicit $exec :: (load (s32) from %ir.ptr1, addrspace 1)
+    S_STORE_DWORD_IMM renamable $sgpr4, renamable $sgpr2_sgpr3, 0, 0 :: (store (s32) into %ir.ptr2, addrspace 1)
+    S_ENDPGM 0
+...

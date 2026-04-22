@@ -1,0 +1,102 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx90a -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx90a -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Meta instructions (IMPLICIT_DEF, KILL, CFI_INSTRUCTION, ...) have no execution
+# effect, so waitcnt instructions separated only by meta instructions must still
+# be combined into a single wait, as the old pass does. Each function below
+# places a different meta instruction between the waits to combine.
+
+# IMPLICIT_DEF between the FLAT atomic's soft lgkmcnt fence and the vmcnt RAW
+# wait for its result.
+---
+name: combine_across_implicit_def
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: combine_across_implicit_def
+  ; CHECK: FLAT_ATOMIC_ADD_X2_RTN
+  ; CHECK-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+  ; CHECK-NEXT: IMPLICIT_DEF
+  ; CHECK-NEXT: V_ACCVGPR_WRITE_B32_e64
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3
+
+    renamable $vgpr0_vgpr1 = FLAT_ATOMIC_ADD_X2_RTN killed renamable $vgpr0_vgpr1, killed renamable $vgpr2_vgpr3, 0, 1, implicit $exec, implicit $flat_scr :: (load store syncscope("workgroup") seq_cst (s64) on `ptr poison`)
+    S_WAITCNT_soft .Lgkmcnt_0
+    S_WAITCNT_lds_direct
+    renamable $vgpr2_vgpr3 = IMPLICIT_DEF
+    $agpr0 = V_ACCVGPR_WRITE_B32_e64 $vgpr0, implicit $exec, implicit-def $agpr0_agpr1, implicit $vgpr0_vgpr1
+    $agpr1 = V_ACCVGPR_WRITE_B32_e64 killed $vgpr1, implicit $exec, implicit $vgpr0_vgpr1, implicit $exec
+    S_ENDPGM 0
+...
+
+# CFI_INSTRUCTION between the waits.
+---
+name: combine_across_cfi
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: combine_across_cfi
+  ; CHECK: FLAT_ATOMIC_ADD_X2_RTN
+  ; CHECK-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+  ; CHECK-NEXT: CFI_INSTRUCTION
+  ; CHECK-NEXT: V_ACCVGPR_WRITE_B32_e64
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3
+
+    renamable $vgpr0_vgpr1 = FLAT_ATOMIC_ADD_X2_RTN killed renamable $vgpr0_vgpr1, killed renamable $vgpr2_vgpr3, 0, 1, implicit $exec, implicit $flat_scr :: (load store syncscope("workgroup") seq_cst (s64) on `ptr poison`)
+    S_WAITCNT_soft .Lgkmcnt_0
+    CFI_INSTRUCTION undefined $vgpr40
+    $agpr0 = V_ACCVGPR_WRITE_B32_e64 $vgpr0, implicit $exec, implicit-def $agpr0_agpr1, implicit $vgpr0_vgpr1
+    $agpr1 = V_ACCVGPR_WRITE_B32_e64 killed $vgpr1, implicit $exec, implicit $vgpr0_vgpr1, implicit $exec
+    S_ENDPGM 0
+...
+
+# Multiple meta instructions (KILL then IMPLICIT_DEF) between the waits.
+---
+name: combine_across_multiple_meta
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: combine_across_multiple_meta
+  ; CHECK: FLAT_ATOMIC_ADD_X2_RTN
+  ; CHECK-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+  ; CHECK-NEXT: KILL
+  ; CHECK-NEXT: IMPLICIT_DEF
+  ; CHECK-NEXT: V_ACCVGPR_WRITE_B32_e64
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $vgpr4
+
+    renamable $vgpr0_vgpr1 = FLAT_ATOMIC_ADD_X2_RTN killed renamable $vgpr0_vgpr1, killed renamable $vgpr2_vgpr3, 0, 1, implicit $exec, implicit $flat_scr :: (load store syncscope("workgroup") seq_cst (s64) on `ptr poison`)
+    S_WAITCNT_soft .Lgkmcnt_0
+    KILL killed renamable $vgpr4
+    renamable $vgpr2_vgpr3 = IMPLICIT_DEF
+    $agpr0 = V_ACCVGPR_WRITE_B32_e64 $vgpr0, implicit $exec, implicit-def $agpr0_agpr1, implicit $vgpr0_vgpr1
+    $agpr1 = V_ACCVGPR_WRITE_B32_e64 killed $vgpr1, implicit $exec, implicit $vgpr0_vgpr1, implicit $exec
+    S_ENDPGM 0
+...
+
+# Two preexisting soft waits split by a meta instruction must merge into one.
+---
+name: combine_two_soft_waits_across_meta
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: combine_two_soft_waits_across_meta
+  ; CHECK: FLAT_ATOMIC_ADD_X2_RTN
+  ; CHECK-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+  ; CHECK-NEXT: IMPLICIT_DEF
+  ; CHECK-NEXT: S_ENDPGM
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3
+
+    renamable $vgpr0_vgpr1 = FLAT_ATOMIC_ADD_X2_RTN killed renamable $vgpr0_vgpr1, killed renamable $vgpr2_vgpr3, 0, 1, implicit $exec, implicit $flat_scr :: (load store syncscope("workgroup") seq_cst (s64) on `ptr poison`)
+    S_WAITCNT_soft .Vmcnt_0
+    renamable $vgpr2_vgpr3 = IMPLICIT_DEF
+    S_WAITCNT_soft .Lgkmcnt_0
+    S_ENDPGM 0
+...

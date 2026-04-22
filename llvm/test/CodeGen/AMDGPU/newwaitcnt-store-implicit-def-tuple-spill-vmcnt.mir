@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx906 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx906 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Pre-GFX10 has no separate store counter: stores use VmCnt. A GISel tuple spill
+# emits the first BUFFER_STORE with an implicit-def of the whole vgpr tuple (a
+# liveness artifact, not a real result). The following spill stores read
+# sub-registers of that tuple. Stores never produce a register result, so the
+# implicit-def must not create a VmCnt RAW hazard: no s_waitcnt vmcnt may be
+# inserted between the stores. The old pass inserts none.
+
+---
+name: store_implicit_def_tuple_spill_vmcnt
+tracksRegLiveness: true
+stack:
+  - { id: 0, type: spill-slot, offset: 0, size: 16, alignment: 4 }
+body: |
+  ; CHECK-LABEL: name: store_implicit_def_tuple_spill_vmcnt
+  ; CHECK: BUFFER_STORE_DWORD_OFFSET killed $vgpr5
+  ; CHECK-NOT: S_WAITCNT
+  ; CHECK: BUFFER_STORE_DWORD_OFFSET killed $vgpr6
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr5_vgpr6_vgpr7_vgpr8
+
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr5, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec, implicit-def $vgpr5_vgpr6_vgpr7_vgpr8, implicit $vgpr5_vgpr6_vgpr7_vgpr8 :: (store (s32) into %stack.0, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr6, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, implicit $exec :: (store (s32) into %stack.0 + 4, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr7, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 8, 0, 0, implicit $exec :: (store (s32) into %stack.0 + 8, addrspace 5)
+    S_ENDPGM 0
+...

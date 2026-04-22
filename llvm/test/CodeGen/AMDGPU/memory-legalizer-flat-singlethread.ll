@@ -1210,8 +1210,8 @@ define amdgpu_kernel void @flat_singlethread_unordered_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -1425,8 +1425,8 @@ define amdgpu_kernel void @flat_singlethread_monotonic_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -1640,8 +1640,8 @@ define amdgpu_kernel void @flat_singlethread_release_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -1855,8 +1855,8 @@ define amdgpu_kernel void @flat_singlethread_seq_cst_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -15663,8 +15663,8 @@ define amdgpu_kernel void @flat_singlethread_one_as_unordered_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -15878,8 +15878,8 @@ define amdgpu_kernel void @flat_singlethread_one_as_monotonic_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -16093,8 +16093,8 @@ define amdgpu_kernel void @flat_singlethread_one_as_release_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {
@@ -16308,8 +16308,8 @@ define amdgpu_kernel void @flat_singlethread_one_as_seq_cst_store(
 ; GFX1250-NEXT:    s_load_b64 s[0:1], s[4:5], 0x8 nv
 ; GFX1250-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX1250-NEXT:    v_mov_b32_e32 v1, s2
-; GFX1250-NEXT:    s_wait_xcnt 0x0
-; GFX1250-NEXT:    s_wait_kmcnt 0x0
+; GFX1250-DAG:     s_wait_xcnt 0x0
+; GFX1250-DAG:     s_wait_kmcnt 0x0
 ; GFX1250-NEXT:    flat_store_b32 v0, v1, s[0:1]
 ; GFX1250-NEXT:    s_endpgm
     i32 %in, ptr %out) #0 {

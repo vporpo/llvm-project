@@ -1,0 +1,35 @@
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Pre-GFX10 has no store counter: a store's data is held on ExpCnt until the
+# store reads it, so overwriting that data register is a WAR hazard ordered by
+# ExpCnt. Here four spill stores are pending on ExpCnt (oldest first: $vgpr33,
+# $vgpr34, $vgpr21, $vgpr22), then a reload overwrites $vgpr33. The WAR must wait
+# until $vgpr33's store (the oldest, position 0 of 4) completes - expcnt(3).
+#
+# The store of $vgpr33 carries a GISel whole-tuple implicit use (implicit
+# $vgpr33_vgpr34) for liveness; likewise the $vgpr34 store. That implicit operand
+# must not record the whole super-register on ExpCnt, or the later $vgpr34 store
+# would wrongly own $vgpr33's ExpCnt entry and the WAR would under-count to
+# expcnt(2). Only the explicit vdata operand is the store's ExpCnt data source.
+
+---
+name: expcnt_war_store_tuple_implicit_use
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  ; CHECK-LABEL: name: expcnt_war_store_tuple_implicit_use
+  ; CHECK: BUFFER_STORE_DWORD_OFFSET killed $vgpr22
+  ; CHECK-NEXT: S_WAITCNT .Expcnt_3
+  ; CHECK-NEXT: $vgpr33 = BUFFER_LOAD_DWORD_OFFSET
+  bb.0:
+    liveins: $vgpr33, $vgpr34, $vgpr21, $vgpr22, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32
+
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr33, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 60, 0, 0, implicit $exec, implicit-def $vgpr33_vgpr34, implicit $vgpr33_vgpr34 :: (store (s32) into `ptr addrspace(5) poison`, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr34, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 64, 0, 0, implicit $exec, implicit killed $vgpr33_vgpr34 :: (store (s32) into `ptr addrspace(5) poison` + 4, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr21, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 196, 0, 0, implicit $exec, implicit-def $vgpr21_vgpr22, implicit $vgpr21_vgpr22 :: (store (s32) into `ptr addrspace(5) poison`, addrspace 5)
+    BUFFER_STORE_DWORD_OFFSET killed $vgpr22, $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 200, 0, 0, implicit $exec, implicit killed $vgpr21_vgpr22 :: (store (s32) into `ptr addrspace(5) poison` + 4, addrspace 5)
+    $vgpr33 = BUFFER_LOAD_DWORD_OFFSET $sgpr0_sgpr1_sgpr2_sgpr3, $sgpr32, 60, 0, 0, implicit $exec, implicit-def $vgpr33_vgpr34 :: (load (s32) from `ptr addrspace(5) poison`, addrspace 5)
+    S_ENDPGM 0
+...

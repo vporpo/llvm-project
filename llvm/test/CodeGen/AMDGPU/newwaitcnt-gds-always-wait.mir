@@ -1,0 +1,43 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# "Always GDS" instructions (ds_add_gs_reg_rtn) must be followed by a
+# lgkmcnt(0) wait. If the next instruction is S_ENDPGM, an S_NOP 0 must
+# also be inserted after the wait.
+
+# CHECK-LABEL: name: gds_wait_before_endpgm
+# CHECK:        DS_ADD_GS_REG_RTN
+# CHECK-NEXT:   S_WAITCNT
+# CHECK-NEXT:   S_NOP 0
+# CHECK-NEXT:   S_ENDPGM
+
+# When the GDS result is used, dataflow inserts a wait for the dependency.
+# The post-pass must not insert a redundant S_NOP — the dataflow-emitted wait
+# already satisfies the hardware requirement of one instruction between the
+# GDS wait and S_ENDPGM.
+
+# CHECK-LABEL: name: gds_wait_no_extra_nop
+# CHECK:        DS_ADD_GS_REG_RTN
+# CHECK-NEXT:   S_WAITCNT
+# CHECK-NEXT:   V_MOV_B32
+# CHECK-NOT:    S_NOP
+# CHECK-NEXT:   S_ENDPGM
+
+---
+name: gds_wait_before_endpgm
+body: |
+  bb.0:
+    liveins: $vgpr0
+    dead renamable $vgpr0_vgpr1 = DS_ADD_GS_REG_RTN killed renamable $vgpr0, 16, implicit $m0, implicit $exec :: (load store (s32), align 1, addrspace 128)
+    S_ENDPGM 0
+...
+
+---
+name: gds_wait_no_extra_nop
+body: |
+  bb.0:
+    liveins: $vgpr0
+    renamable $vgpr0_vgpr1 = DS_ADD_GS_REG_RTN killed renamable $vgpr0, 16, implicit $m0, implicit $exec :: (load store (s32), align 1, addrspace 128)
+    $vgpr2 = V_MOV_B32_e32 $vgpr0, implicit $exec
+    S_ENDPGM 0
+...

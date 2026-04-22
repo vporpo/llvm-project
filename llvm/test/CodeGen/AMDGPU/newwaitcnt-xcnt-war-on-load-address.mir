@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=amdgcn-amd-amdpal -mcpu=gfx1250 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdpal -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# XCnt tracks address translation. The GLOBAL_LOAD reads $vgpr0_vgpr1 as its
+# address. Consuming the load result forces an s_wait_loadcnt 0 first. A later
+# instruction then overwrites $vgpr1 (the load address) - a write-after-read
+# hazard against the address translation that still needs an s_wait_xcnt 0.
+# The new pass must not treat the prior loadcnt 0 as having cleared XCnt here.
+
+---
+name: xcnt_war_on_load_address
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: false
+body: |
+  ; CHECK-LABEL: name: xcnt_war_on_load_address
+  ; CHECK: GLOBAL_LOAD_DWORD
+  ; CHECK: S_WAIT_LOADCNT 0
+  ; CHECK: V_LSHRREV_B32
+  ; CHECK: S_WAIT_XCNT 0
+  ; CHECK-NEXT: $vgpr1 = V_MOV_B32_e32 $vgpr3
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr3, $sgpr30_sgpr31
+
+    renamable $vgpr2 = GLOBAL_LOAD_DWORD renamable $vgpr0_vgpr1, 0, 0, implicit $exec :: (load (s32) from `ptr addrspace(1) poison`, addrspace 1)
+    renamable $vgpr4 = V_LSHRREV_B32_e32 8, $vgpr2, implicit $exec
+    $vgpr1 = V_MOV_B32_e32 $vgpr3, implicit $exec
+    S_SETPC_B64_return undef $sgpr30_sgpr31, implicit killed $vgpr1, implicit killed $vgpr2, implicit killed $vgpr4
+...

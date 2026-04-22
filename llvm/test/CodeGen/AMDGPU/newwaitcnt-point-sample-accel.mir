@@ -1,0 +1,82 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1150 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1150 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test Point Sample Acceleration behavior on GFX1150.
+#
+# On targets with Point Sample Acceleration (hasPointSampleAccel), certain
+# SAMPLER instructions (IMAGE_SAMPLE, IMAGE_SAMPLE_L, IMAGE_SAMPLE_LZ, etc.)
+# can be accelerated to effectively behave like NOSAMPLER instructions.
+# This means they may complete out of order relative to other SAMPLER
+# instructions (like IMAGE_GATHER4) even though both have VmemType=SAMPLER.
+#
+# The in-order VGPR write optimization (hasVmemWriteVgprInOrder) cannot be
+# applied when Point Sample Acceleration is involved because the accelerated
+# instruction may complete before or after non-accelerated SAMPLER instructions.
+
+---
+# IMAGE_SAMPLE (has PSA) -> IMAGE_GATHER4 (no PSA): needs wait
+# Both are SAMPLER type, but IMAGE_SAMPLE can be accelerated to behave like
+# NOSAMPLER, so they may complete out of order.
+name: sample_then_gather4_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, $vgpr0_vgpr1, $vgpr2_vgpr3_vgpr4
+    ; CHECK-LABEL: name: sample_then_gather4_waw
+    ; CHECK: IMAGE_SAMPLE_V4_V2
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_0
+    ; CHECK-NEXT: IMAGE_GATHER4_LZ_O_V4_V3
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_SAMPLE_V4_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 15, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_GATHER4_LZ_O_V4_V3 $vgpr2_vgpr3_vgpr4, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+...
+
+---
+# IMAGE_GATHER4 (no PSA) -> IMAGE_SAMPLE (has PSA): needs wait
+# Even though IMAGE_SAMPLE is the second instruction, it can be accelerated
+# and complete before the first GATHER4, causing a WAW hazard.
+name: gather4_then_sample_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, $vgpr0_vgpr1, $vgpr2_vgpr3_vgpr4
+    ; CHECK-LABEL: name: gather4_then_sample_waw
+    ; CHECK: IMAGE_GATHER4_LZ_O_V4_V3
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_0
+    ; CHECK-NEXT: IMAGE_SAMPLE_V4_V2
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_GATHER4_LZ_O_V4_V3 $vgpr2_vgpr3_vgpr4, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_SAMPLE_V4_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 15, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+...
+
+---
+# IMAGE_SAMPLE (has PSA) -> IMAGE_SAMPLE (has PSA): needs wait
+# Even though both have Point Sample Acceleration, the first SAMPLE can be
+# accelerated to NOSAMPLER while the second remains SAMPLER, so they may
+# complete out of order.
+name: sample_then_sample_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, $vgpr0_vgpr1
+    ; CHECK-LABEL: name: sample_then_sample_waw
+    ; CHECK: IMAGE_SAMPLE_V4_V2
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_0
+    ; CHECK-NEXT: IMAGE_SAMPLE_V4_V2
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_SAMPLE_V4_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 15, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_SAMPLE_V4_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 15, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+...
+
+---
+# IMAGE_GATHER4 (no PSA) -> IMAGE_GATHER4 (no PSA): NO wait needed
+# Neither has Point Sample Acceleration, same VmemType, so in-order VGPR write applies.
+name: gather4_then_gather4_waw_no_wait
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, $vgpr2_vgpr3_vgpr4
+    ; CHECK-LABEL: name: gather4_then_gather4_waw_no_wait
+    ; CHECK: IMAGE_GATHER4_LZ_O_V4_V3
+    ; CHECK-NOT: S_WAITCNT
+    ; CHECK-NEXT: IMAGE_GATHER4_LZ_O_V4_V3
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_GATHER4_LZ_O_V4_V3 $vgpr2_vgpr3_vgpr4, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+    $vgpr10_vgpr11_vgpr12_vgpr13 = IMAGE_GATHER4_LZ_O_V4_V3 $vgpr2_vgpr3_vgpr4, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s128))
+...

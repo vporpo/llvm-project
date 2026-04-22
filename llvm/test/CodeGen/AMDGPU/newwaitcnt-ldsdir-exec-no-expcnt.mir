@@ -1,0 +1,26 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# LDSDIR (LDS_PARAM_LOAD) holds its VGPR source operands on the export counter
+# (ExpCnt), but NOT its implicit reads of $exec/$m0. A later write to $exec (e.g.
+# WQM/control-flow exec masking) must therefore not be treated as a
+# write-after-read hazard against the LDSDIR's $exec read, and must not produce a
+# spurious S_WAITCNT expcnt(0).
+#
+# Here LDS_PARAM_LOAD reads $exec implicitly, then S_AND_B64 writes $exec. There
+# is no real ExpCnt hazard, so no expcnt wait belongs before the $exec write.
+
+---
+name: ldsdir_exec_write_no_expcnt
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $sgpr0_sgpr1
+    ; CHECK: LDS_PARAM_LOAD
+    ; CHECK-NEXT: $exec = S_AND_B64
+    ; CHECK-NOT: S_WAITCNT {{.*}}Expcnt
+    renamable $vgpr1 = LDS_PARAM_LOAD 0, 0, 0, implicit $m0, implicit $exec
+    $exec = S_AND_B64 $exec, $sgpr0_sgpr1, implicit-def $scc
+    $vgpr2 = V_MOV_B32_e32 1, implicit $exec
+    S_ENDPGM 0
+...

@@ -1,0 +1,106 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s
+
+# Test that hardware implicit XCnt sync between interleaved SMEM and VMEM
+# operations is modeled correctly. When SMEM follows VMEM (or vice versa),
+# hardware inserts an implicit XCnt wait, so explicit waits are not needed
+# for WAR hazards on address registers of the "other" type.
+
+---
+# VMEM followed by SMEM: hardware syncs VMEM's XCnt.
+# WAR on VMEM's address register ($vgpr0) should NOT need S_WAIT_XCNT
+# because SMEM implicitly synced it.
+name: vmem_then_smem_war_on_vmem_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: vmem_then_smem_war_on_vmem_addr
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK-NOT: S_WAIT_XCNT
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+---
+# SMEM followed by VMEM: hardware syncs SMEM's XCnt.
+# WAR on SMEM's address register ($sgpr0) should NOT need S_WAIT_XCNT
+# because VMEM implicitly synced it.
+name: smem_then_vmem_war_on_smem_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: smem_then_vmem_war_on_smem_addr
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK-NOT: S_WAIT_XCNT
+    ; CHECK: $sgpr0 = S_MOV_B32
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $sgpr0 = S_MOV_B32 0
+...
+
+---
+# Multiple type changes: VMEM -> SMEM -> VMEM
+# Each type change syncs the previous type's XCnt.
+# WAR on first VMEM's address should NOT need wait (synced by SMEM).
+name: vmem_smem_vmem_war_on_first_vmem
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3, $sgpr0_sgpr1
+    ; CHECK-LABEL: name: vmem_smem_vmem_war_on_first_vmem
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK-NOT: S_WAIT_XCNT
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+---
+# Same type sequence: VMEM -> VMEM -> VMEM
+# No implicit sync - need explicit S_WAIT_XCNT for WAR.
+name: vmem_vmem_vmem_needs_wait
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2_vgpr3
+    ; CHECK-LABEL: name: vmem_vmem_vmem_needs_wait
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr0_vgpr1
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK: GLOBAL_LOAD_DWORD $vgpr2_vgpr3
+    ; CHECK: S_WAIT_XCNT 2
+    ; CHECK: $vgpr0 = V_MOV_B32_e32
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec
+    $vgpr12 = GLOBAL_LOAD_DWORD $vgpr2_vgpr3, 4, 0, implicit $exec
+    $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+...
+
+---
+# Same type sequence: SMEM -> SMEM -> SMEM
+# SMEM is out-of-order for XCnt, need S_WAIT_XCNT 0.
+name: smem_smem_smem_needs_wait
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr2_sgpr3, $sgpr4_sgpr5
+    ; CHECK-LABEL: name: smem_smem_smem_needs_wait
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr0_sgpr1
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr2_sgpr3
+    ; CHECK: S_LOAD_DWORD_IMM $sgpr4_sgpr5
+    ; CHECK: S_WAIT_XCNT 0
+    ; CHECK: $sgpr0 = S_MOV_B32
+    $sgpr10 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $sgpr11 = S_LOAD_DWORD_IMM $sgpr2_sgpr3, 0, 0 :: (load (s32))
+    $sgpr12 = S_LOAD_DWORD_IMM $sgpr4_sgpr5, 0, 0 :: (load (s32))
+    $sgpr0 = S_MOV_B32 0
+...

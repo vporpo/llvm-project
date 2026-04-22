@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx908 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx908 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# An explicit (hard) S_WAITCNT inside a BUNDLE must be preserved verbatim, just
+# like one outside a bundle. The pass walks bundle interiors, so it must also
+# recognize a bundled wait as explicit (recorded before promotion) and not trim
+# its "redundant" counters. Here the user's S_WAITCNT 0 (all counters) is kept in
+# full even though only some counters have pending work.
+
+---
+name: explicit_waitcnt_in_bundle
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr2_vgpr3
+    ; CHECK-LABEL: name: explicit_waitcnt_in_bundle
+    ; CHECK: $vgpr1 = FLAT_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    ; CHECK-NEXT: BUNDLE {
+    ; CHECK-NEXT: S_NOP 0
+    ; CHECK-NEXT: S_WAITCNT .Vmcnt_0_Expcnt_0_Lgkmcnt_0
+    $vgpr1 = FLAT_LOAD_DWORD $vgpr2_vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    BUNDLE {
+      S_NOP 0
+      S_WAITCNT 0
+    }
+    FLAT_STORE_DWORD $vgpr2_vgpr3, $vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...

@@ -1,0 +1,458 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Test memory dependencies within the same hardware unit (no register dependency).
+# No waits are needed because operations on the same counter (e.g., DS->DS on
+# lgkmcnt, or VMEM->VMEM on vmcnt) are processed in order by that unit.
+# Cross-unit dependencies (e.g., VMEM-to-LDS followed by DS read) DO require
+# waits and are tested separately in newwaitcnt-mem-deps-diff-units.mir
+
+#############################################################################
+# RAW (load-after-store), same address
+#############################################################################
+
+# CHECK-LABEL: name: ds_write_read
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: DS_READ_B32_gfx9
+# CHECK-NEXT: S_ENDPGM
+---
+name: ds_write_read
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $exec
+    $vgpr2 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: vmem_store_load
+# CHECK: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: BUFFER_LOAD_DWORD_OFFEN
+# CHECK-NEXT: S_ENDPGM
+name: vmem_store_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3
+    BUFFER_STORE_DWORD_OFFEN $vgpr1, $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    $vgpr2 = BUFFER_LOAD_DWORD_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: global_store_load
+# CHECK: GLOBAL_STORE_DWORD
+# CHECK-NEXT: GLOBAL_LOAD_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: global_store_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: flat_store_load
+# CHECK: FLAT_STORE_DWORD
+# CHECK-NEXT: FLAT_LOAD_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: flat_store_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr3 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: scratch_store_load
+# CHECK: SCRATCH_STORE_DWORD
+# CHECK-NEXT: SCRATCH_LOAD_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: scratch_store_load
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $sgpr0_sgpr1
+    SCRATCH_STORE_DWORD $vgpr1, $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = SCRATCH_LOAD_DWORD $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+
+#############################################################################
+# RAW (load-after-store), different address
+#############################################################################
+
+---
+# CHECK-LABEL: name: ds_write_read_diff_addr
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: DS_READ_B32_gfx9
+# CHECK-NEXT: S_ENDPGM
+name: ds_write_read_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $exec
+    $vgpr3 = DS_READ_B32_gfx9 $vgpr2, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: vmem_store_load_diff_addr
+# CHECK: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: BUFFER_LOAD_DWORD_OFFEN
+# CHECK-NEXT: S_ENDPGM
+name: vmem_store_load_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3
+    BUFFER_STORE_DWORD_OFFEN $vgpr1, $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    $vgpr3 = BUFFER_LOAD_DWORD_OFFEN $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: global_store_load_diff_addr
+# CHECK: GLOBAL_STORE_DWORD
+# CHECK-NEXT: GLOBAL_LOAD_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: global_store_load_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3_vgpr4
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    $vgpr5 = GLOBAL_LOAD_DWORD $vgpr3_vgpr4, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: flat_store_load_diff_addr
+# CHECK: FLAT_STORE_DWORD
+# CHECK-NEXT: FLAT_LOAD_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: flat_store_load_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3_vgpr4
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr5 = FLAT_LOAD_DWORD $vgpr3_vgpr4, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: scratch_store_load_diff_addr
+# CHECK: SCRATCH_STORE_DWORD
+# CHECK-NEXT: SCRATCH_LOAD_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: scratch_store_load_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1
+    SCRATCH_STORE_DWORD $vgpr1, $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr3 = SCRATCH_LOAD_DWORD $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+
+#############################################################################
+# WAW (store-after-store), same address
+#############################################################################
+
+---
+# CHECK-LABEL: name: ds_write_write
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: DS_WRITE_B32_gfx9
+# CHECK-NEXT: S_ENDPGM
+name: ds_write_write
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $exec
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr2, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: vmem_store_store
+# CHECK: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: S_ENDPGM
+name: vmem_store_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3
+    BUFFER_STORE_DWORD_OFFEN $vgpr1, $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFEN $vgpr2, $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: global_store_store
+# CHECK: GLOBAL_STORE_DWORD
+# CHECK-NEXT: GLOBAL_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: global_store_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr3, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: flat_store_store
+# CHECK: FLAT_STORE_DWORD
+# CHECK-NEXT: FLAT_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: flat_store_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr3, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: scratch_store_store
+# CHECK: SCRATCH_STORE_DWORD
+# CHECK-NEXT: SCRATCH_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: scratch_store_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1
+    SCRATCH_STORE_DWORD $vgpr1, $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    SCRATCH_STORE_DWORD $vgpr2, $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+
+#############################################################################
+# WAW (store-after-store), different address
+#############################################################################
+
+---
+# CHECK-LABEL: name: ds_write_write_diff_addr
+# CHECK: DS_WRITE_B32_gfx9
+# CHECK-NEXT: DS_WRITE_B32_gfx9
+# CHECK-NEXT: S_ENDPGM
+name: ds_write_write_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $exec
+    DS_WRITE_B32_gfx9 $vgpr2, $vgpr3, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: vmem_store_store_diff_addr
+# CHECK: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: S_ENDPGM
+name: vmem_store_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3
+    BUFFER_STORE_DWORD_OFFEN $vgpr1, $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFEN $vgpr3, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: global_store_store_diff_addr
+# CHECK: GLOBAL_STORE_DWORD
+# CHECK-NEXT: GLOBAL_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: global_store_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3_vgpr4, $vgpr5
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    GLOBAL_STORE_DWORD $vgpr3_vgpr4, $vgpr5, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: flat_store_store_diff_addr
+# CHECK: FLAT_STORE_DWORD
+# CHECK-NEXT: FLAT_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: flat_store_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3_vgpr4, $vgpr5
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    FLAT_STORE_DWORD $vgpr3_vgpr4, $vgpr5, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: scratch_store_store_diff_addr
+# CHECK: SCRATCH_STORE_DWORD
+# CHECK-NEXT: SCRATCH_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: scratch_store_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $sgpr0_sgpr1
+    SCRATCH_STORE_DWORD $vgpr1, $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    SCRATCH_STORE_DWORD $vgpr3, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+
+#############################################################################
+# WAR (store-after-load), same address
+#############################################################################
+
+---
+# CHECK-LABEL: name: ds_read_write
+# CHECK: DS_READ_B32_gfx9
+# CHECK-NEXT: DS_WRITE_B32_gfx9
+# CHECK-NEXT: S_ENDPGM
+name: ds_read_write
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1
+    $vgpr2 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: vmem_load_store
+# CHECK: BUFFER_LOAD_DWORD_OFFEN
+# CHECK-NEXT: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: S_ENDPGM
+name: vmem_load_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3
+    $vgpr2 = BUFFER_LOAD_DWORD_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFEN $vgpr1, $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: global_load_store
+# CHECK: GLOBAL_LOAD_DWORD
+# CHECK-NEXT: GLOBAL_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: global_load_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: flat_load_store
+# CHECK: FLAT_LOAD_DWORD
+# CHECK-NEXT: FLAT_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: flat_load_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    $vgpr3 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    FLAT_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: scratch_load_store
+# CHECK: SCRATCH_LOAD_DWORD
+# CHECK-NEXT: SCRATCH_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: scratch_load_store
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $sgpr0_sgpr1
+    $vgpr2 = SCRATCH_LOAD_DWORD $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    SCRATCH_STORE_DWORD $vgpr1, $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+
+#############################################################################
+# WAR (store-after-load), different address
+#############################################################################
+
+---
+# CHECK-LABEL: name: ds_read_write_diff_addr
+# CHECK: DS_READ_B32_gfx9
+# CHECK-NEXT: DS_WRITE_B32_gfx9
+# CHECK-NEXT: S_ENDPGM
+name: ds_read_write_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2
+    $vgpr3 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec
+    DS_WRITE_B32_gfx9 $vgpr2, $vgpr1, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: vmem_load_store_diff_addr
+# CHECK: BUFFER_LOAD_DWORD_OFFEN
+# CHECK-NEXT: BUFFER_STORE_DWORD_OFFEN
+# CHECK-NEXT: S_ENDPGM
+name: vmem_load_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3
+    $vgpr3 = BUFFER_LOAD_DWORD_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFEN $vgpr1, $vgpr2, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: global_load_store_diff_addr
+# CHECK: GLOBAL_LOAD_DWORD
+# CHECK-NEXT: GLOBAL_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: global_load_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3_vgpr4
+    $vgpr5 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    GLOBAL_STORE_DWORD $vgpr3_vgpr4, $vgpr2, 0, 0, implicit $exec
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: flat_load_store_diff_addr
+# CHECK: FLAT_LOAD_DWORD
+# CHECK-NEXT: FLAT_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: flat_load_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2, $vgpr3_vgpr4
+    $vgpr5 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    FLAT_STORE_DWORD $vgpr3_vgpr4, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...
+---
+# CHECK-LABEL: name: scratch_load_store_diff_addr
+# CHECK: SCRATCH_LOAD_DWORD
+# CHECK-NEXT: SCRATCH_STORE_DWORD
+# CHECK-NEXT: S_ENDPGM
+name: scratch_load_store_diff_addr
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $vgpr2, $sgpr0_sgpr1
+    $vgpr3 = SCRATCH_LOAD_DWORD $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    SCRATCH_STORE_DWORD $vgpr1, $vgpr2, 0, 0, implicit $exec, implicit $flat_scr
+    S_ENDPGM 0
+...

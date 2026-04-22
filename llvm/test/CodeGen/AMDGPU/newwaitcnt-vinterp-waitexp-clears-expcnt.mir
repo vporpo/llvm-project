@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# Two LDS_PARAM_LOAD increment ExpCnt. The first V_INTERP_P10 reads both via its
+# fused waitexp field (waitexp:0 waits for all of them). Once that fused wait has
+# drained ExpCnt, the following V_INTERP_P2 reading the same params needs no
+# further expcnt wait, so its waitexp must stay 7 (no wait). The pass must apply
+# the fused waitexp to the ExpCnt tracker, otherwise it spuriously lowers the P2
+# waitexp.
+
+---
+name: vinterp_waitexp_clears_expcnt
+tracksRegLiveness: true
+body: |
+  ; CHECK-LABEL: name: vinterp_waitexp_clears_expcnt
+  ; CHECK: $vgpr2 = V_INTERP_P10_F32_inreg 0, $vgpr1, 0, killed $vgpr2, 0, $vgpr1, 0, 0
+  ; CHECK: $vgpr5 = V_INTERP_P2_F32_inreg 0, $vgpr0, 0, $vgpr4, 0, $vgpr3, 0, 7
+  bb.0:
+    liveins: $vgpr2, $vgpr4, $sgpr0, $sgpr1, $m0
+
+    $vgpr0 = LDS_PARAM_LOAD 0, 1, 0, implicit $m0, implicit $exec
+    $vgpr1 = LDS_PARAM_LOAD 1, 0, 0, implicit $m0, implicit $exec
+    renamable $vgpr3 = V_INTERP_P10_F32_inreg 0, $vgpr0, 0, $vgpr2, 0, $vgpr0, 0, 7, implicit $m0, implicit $exec, implicit $mode
+    renamable $vgpr2 = V_INTERP_P10_F32_inreg 0, $vgpr1, 0, killed $vgpr2, 0, $vgpr1, 0, 7, implicit $m0, implicit $exec, implicit $mode
+    renamable $vgpr5 = V_INTERP_P2_F32_inreg 0, $vgpr0, 0, $vgpr4, 0, $vgpr3, 0, 7, implicit $m0, implicit $exec, implicit $mode
+    renamable $vgpr4 = V_INTERP_P2_F32_inreg 0, $vgpr1, 0, killed $vgpr4, 0, $vgpr5, 0, 7, implicit $m0, implicit $exec, implicit $mode
+    EXP_DONE 0, killed renamable $vgpr3, killed renamable $vgpr2, killed renamable $vgpr5, killed renamable $vgpr4, -1, 0, 15, implicit $exec
+    S_ENDPGM 0
+...

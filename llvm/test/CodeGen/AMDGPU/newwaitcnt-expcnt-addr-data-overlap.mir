@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn -mcpu=tahiti -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# On gfx6, a BUFFER_STORE holds its vdata source on ExpCnt (WAR hazard). When the
+# vaddr register pair (e.g. $vgpr3_vgpr4) contains the vdata register ($vgpr4) as a
+# sub-register, only the vdata sub-register ($vgpr4) should be tracked on ExpCnt.
+# Overwriting the other half of the address pair ($vgpr3) is NOT a WAR hazard on
+# ExpCnt and must not require an expcnt wait. The new pass must not emit a spurious
+# s_waitcnt expcnt(0) before writing the address-only half.
+
+# CHECK-LABEL: name: expcnt_addr_overlap
+# CHECK:        BUFFER_STORE_DWORD_ADDR64
+# CHECK-NOT:    S_WAITCNT
+# CHECK-NEXT:   renamable $vgpr3 = V_MOV_B32_e32 3
+# CHECK-NEXT:   S_ENDPGM 0
+
+---
+name: expcnt_addr_overlap
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0, $vgpr3, $vgpr4
+
+    BUFFER_STORE_DWORD_ADDR64 killed renamable $vgpr4, renamable $vgpr3_vgpr4, renamable $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec :: (store (s32), addrspace 1)
+    renamable $vgpr3 = V_MOV_B32_e32 3, implicit $exec
+    S_ENDPGM 0
+...

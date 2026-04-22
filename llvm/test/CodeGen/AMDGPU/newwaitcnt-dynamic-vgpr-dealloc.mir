@@ -1,0 +1,22 @@
+# RUN: llc -mtriple=amdgcn-amd-amdpal -mcpu=gfx1200 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdpal -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# In dynamic VGPR mode, S_ALLOC_VGPR 0 must be emitted before every S_ENDPGM
+# unconditionally — not just when stores are outstanding. This explicitly releases
+# the VGPRs before the wave exits, which is faster than relying on the hardware.
+# The kernel here has no stores at all; the dealloc must still be emitted.
+
+# CHECK-LABEL: name: dynvgpr_dealloc
+# CHECK:        S_ALLOC_VGPR 0
+# CHECK-NEXT:   S_ENDPGM 0
+
+---
+name: dynvgpr_dealloc
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+  dynamicVGPRBlockSize: 32
+body: |
+  bb.0:
+    S_ENDPGM 0
+...

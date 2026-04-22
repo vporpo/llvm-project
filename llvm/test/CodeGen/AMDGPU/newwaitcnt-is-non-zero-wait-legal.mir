@@ -1,0 +1,1082 @@
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX9
+# RUN: llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX9
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX10
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1010 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX10
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX11
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1100 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX11
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX12
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX12
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX12
+# RUN: llc -mtriple=amdgcn -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s --check-prefix=GFX12
+
+# Test Counter::isNonZeroWaitLegal() patterns for vmcnt/loadcnt.
+# Position-based waits (cnt > 0) indicate in-order completion is legal.
+# cnt 0 indicates out-of-order (must wait for all).
+#
+# The result of isNonZeroWaitLegal(SrcMI, DstMI) depends on:
+#   1. The type of SrcMI and DstMI (VMEM-only, FLAT, DS, etc.)
+#   2. The VmemType of SrcMI and DstMI (NOSAMPLER, SAMPLER, BVH)
+#   3. The contents of the Counter (other pending instructions)
+#   4. Target features (hasFlatLgkmVMemCountInOrder, etc.)
+#
+# ============================================================================
+# Test Summary Table
+# ============================================================================
+#
+# Section 1: VMEM-only instructions (GLOBAL, SCRATCH, BUFFER, IMAGE_LOAD)
+# ------------------------------------------------------------------------
+# | Test Name                    | SrcMI        | DstMI        | Pending   | Expected (GFX9-11) | Expected (GFX12) |
+# |------------------------------|--------------|--------------|-----------|--------------------| -----------------|
+# | global_global_waw            | GLOBAL       | GLOBAL       | (none)    | vmcnt 1            | loadcnt 1        |
+# | scratch_scratch_waw          | SCRATCH      | SCRATCH      | (none)    | vmcnt 1            | loadcnt 1        |
+# | global_scratch_waw           | GLOBAL       | SCRATCH      | (none)    | vmcnt 1            | loadcnt 1        |
+# | buffer_buffer_waw            | BUFFER       | BUFFER       | (none)    | vmcnt 1            | loadcnt 1        |
+# | image_load_image_load_waw    | IMAGE_LOAD   | IMAGE_LOAD   | (none)    | vmcnt 1            | loadcnt 1        |
+# | global_image_load_waw        | GLOBAL       | IMAGE_LOAD   | (none)    | vmcnt 1            | loadcnt 1        |
+#
+# Section 2: Mixed VmemType (NOSAMPLER vs SAMPLER)
+# ------------------------------------------------------------------------
+# | Test Name                    | SrcMI        | DstMI        | Pending   | Expected (GFX9-11) | Expected (GFX12) |
+# |------------------------------|--------------|--------------|-----------|--------------------| -----------------|
+# | image_load_image_sample_waw  | IMAGE_LOAD   | IMAGE_SAMPLE | (none)    | vmcnt 1            | loadcnt 0        |
+# | global_image_sample_waw      | GLOBAL       | IMAGE_SAMPLE | (none)    | vmcnt 1            | loadcnt 0        |
+#
+# Section 3: FLAT instructions
+# ------------------------------------------------------------------------
+# | Test Name                    | SrcMI        | DstMI        | Pending   | Expected (GFX9)    | Expected (GFX10+)| Expected (GFX12) |
+# |------------------------------|--------------|--------------|-----------|--------------------| -----------------|------------------|
+# | flat_flat_waw                | FLAT         | FLAT         | (none)    | vmcnt 0, lgkmcnt 0 | vmcnt 1,lgkmcnt 1| loadcnt 1,dscnt 1|
+# | flat_global_waw              | FLAT         | GLOBAL       | (none)    | lgkmcnt 0          | lgkmcnt 0        | loadcnt 0,dscnt 0|
+# | global_flat_waw              | GLOBAL       | FLAT         | (none)    | vmcnt 0            | vmcnt 0          | loadcnt 0        |
+#
+# Section 4: VMEM → VALU (RAW dependency, non-memory consumer)
+# ------------------------------------------------------------------------
+# | Test Name                    | SrcMI        | DstMI        | Pending   | Expected (GFX9-11) | Expected (GFX12) |
+# |------------------------------|--------------|--------------|-----------|--------------------| -----------------|
+# | global_valu_raw              | GLOBAL       | VALU         | (none)    | vmcnt 0            | loadcnt 0        |
+# | flat_valu_raw                | FLAT         | VALU         | (none)    | vmcnt 0, lgkmcnt 0 | loadcnt 0,dscnt 0|
+#
+# Section 5: DS instructions (lgkmcnt/dscnt)
+# ------------------------------------------------------------------------
+# | Test Name                    | SrcMI        | DstMI        | Pending   | Expected (GFX9-11) | Expected (GFX12) |
+# |------------------------------|--------------|--------------|-----------|--------------------| -----------------|
+# | ds_read_ds_read_waw          | DS_READ      | DS_READ      | (none)    | lgkmcnt 1          | dscnt 1          |
+# | ds_read_ds_write_war         | DS_READ      | DS_WRITE     | (none)    | lgkmcnt 1          | dscnt 1          |
+#
+# ============================================================================
+#
+# Tests with pending instructions in-between A and B are in:
+#   newwaitcnt-is-non-zero-wait-legal-with-pending-in-between.mir
+
+---
+# GLOBAL → GLOBAL (same VmemType: NOSAMPLER)
+# Expected: in-order, position-based wait
+name: global_global_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: global_global_waw
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: global_global_waw
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: global_global_waw
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: global_global_waw
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+---
+# SCRATCH → SCRATCH (same VmemType: NOSAMPLER)
+# Expected: in-order, position-based wait
+name: scratch_scratch_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0
+    ; GFX9-LABEL: name: scratch_scratch_waw
+    ; GFX9: SCRATCH_LOAD_DWORD
+    ; GFX9-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: scratch_scratch_waw
+    ; GFX10: SCRATCH_LOAD_DWORD
+    ; GFX10-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: scratch_scratch_waw
+    ; GFX11: SCRATCH_LOAD_DWORD
+    ; GFX11-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: scratch_scratch_waw
+    ; GFX12: SCRATCH_LOAD_DWORD
+    ; GFX12-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = SCRATCH_LOAD_DWORD $vgpr0, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr3 = SCRATCH_LOAD_DWORD $vgpr0, 4, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+---
+# GLOBAL → SCRATCH (both VMEM-only, same VmemType: NOSAMPLER)
+# Expected: in-order
+name: global_scratch_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr4
+    ; GFX9-LABEL: name: global_scratch_waw
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: global_scratch_waw
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: global_scratch_waw
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: global_scratch_waw
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: SCRATCH_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr3 = SCRATCH_LOAD_DWORD $vgpr4, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+---
+# GLOBAL → VALU (non-memory consumer, RAW)
+# Expected: vmcnt 0 (wait for all since it's a RAW, not WAW)
+name: global_valu_raw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: global_valu_raw
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX9-NEXT: $vgpr2 = V_ADD
+    ;
+    ; GFX10-LABEL: name: global_valu_raw
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX10-NEXT: $vgpr2 = V_ADD
+    ;
+    ; GFX11-LABEL: name: global_valu_raw
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX11-NEXT: $vgpr2 = V_ADD
+    ;
+    ; GFX12-LABEL: name: global_valu_raw
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 0
+    ; GFX12-NEXT: $vgpr2 = V_ADD
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec
+    $vgpr2 = V_ADD_U32_e32 $vgpr2, $vgpr3, implicit $exec
+...
+
+---
+# FLAT → FLAT (pure FLAT, WAW)
+# gfx9: NOT in-order (vmcnt 0, lgkmcnt 0)
+# gfx10+: in-order (vmcnt 1, lgkmcnt 1)
+name: flat_flat_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: flat_flat_waw
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: flat_flat_waw
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1_Lgkmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: flat_flat_waw
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1_Lgkmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: flat_flat_waw
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_1_Dscnt_1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr3 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+---
+# FLAT → VALU (non-memory consumer, RAW)
+# Expected: wait for all (vmcnt 0, lgkmcnt 0)
+name: flat_valu_raw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: flat_valu_raw
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+    ; GFX9-NEXT: $vgpr4 = V_ADD
+    ;
+    ; GFX10-LABEL: name: flat_valu_raw
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+    ; GFX10-NEXT: $vgpr4 = V_ADD
+    ;
+    ; GFX11-LABEL: name: flat_valu_raw
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+    ; GFX11-NEXT: $vgpr4 = V_ADD
+    ;
+    ; GFX12-LABEL: name: flat_valu_raw
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+    ; GFX12-NEXT: $vgpr4 = V_ADD
+    $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr3 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec, implicit $flat_scr
+    $vgpr4 = V_ADD_U32_e32 $vgpr2, $vgpr3, implicit $exec
+...
+
+---
+# FLAT → GLOBAL (pure FLAT then segment-specific, WAW)
+# Expected: only lgkmcnt 0 (vmcnt in-order for FLAT->GLOBAL)
+name: flat_global_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: flat_global_waw
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ;
+    ; GFX10-LABEL: name: flat_global_waw
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ;
+    ; GFX11-LABEL: name: flat_global_waw
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ;
+    ; GFX12-LABEL: name: flat_global_waw
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_0_Dscnt_0
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec
+...
+
+---
+# GLOBAL → FLAT (segment-specific then pure FLAT, WAW)
+# Expected: vmcnt 0 (FLAT can access LDS, not in-order)
+name: global_flat_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+    ; GFX9-LABEL: name: global_flat_waw
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ;
+    ; GFX10-LABEL: name: global_flat_waw
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ;
+    ; GFX11-LABEL: name: global_flat_waw
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ;
+    ; GFX12-LABEL: name: global_flat_waw
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 0
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr2 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec, implicit $flat_scr
+...
+
+---
+# IMAGE_LOAD → IMAGE_LOAD (same VmemType: NOSAMPLER)
+# Expected: in-order
+name: image_load_image_load_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7
+    ; GFX9-LABEL: name: image_load_image_load_waw
+    ; GFX9: IMAGE_LOAD_V1_V4
+    ; GFX9-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: image_load_image_load_waw
+    ; GFX10: IMAGE_LOAD_V1_V4
+    ; GFX10-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: image_load_image_load_waw
+    ; GFX11: IMAGE_LOAD_V1_V4
+    ; GFX11-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: image_load_image_load_waw
+    ; GFX12: IMAGE_LOAD_V1_V4
+    ; GFX12-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32
+    $vgpr4 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr5 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+---
+# IMAGE_LOAD → IMAGE_SAMPLE (different VmemType: NOSAMPLER vs SAMPLER)
+# gfx9/gfx10/gfx11: position-based (vmcnt 1) - different VmemTypes still in-order for pre-gfx12
+# gfx12: NOT in-order (loadcnt 0) - different counters (loadcnt vs samplecnt)
+name: image_load_image_sample_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11
+    ; GFX9-LABEL: name: image_load_image_sample_waw
+    ; GFX9: IMAGE_LOAD_V1_V4
+    ; GFX9-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: image_load_image_sample_waw
+    ; GFX10: IMAGE_LOAD_V1_V4
+    ; GFX10-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: image_load_image_sample_waw
+    ; GFX11: IMAGE_LOAD_V1_V4
+    ; GFX11-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: image_load_image_sample_waw
+    ; GFX12: IMAGE_LOAD_V1_V4
+    ; GFX12-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX12-NEXT: S_WAIT_LOADCNT 0
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32
+    $vgpr4 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr5 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+---
+# GLOBAL → IMAGE_LOAD (both NOSAMPLER)
+# Expected: in-order
+name: global_image_load_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7
+    ; GFX9-LABEL: name: global_image_load_waw
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: global_image_load_waw
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: global_image_load_waw
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: global_image_load_waw
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: IMAGE_LOAD_V1_V4
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32
+    $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr5 = IMAGE_LOAD_V1_V4 $vgpr0_vgpr1_vgpr2_vgpr3, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+---
+# GLOBAL → IMAGE_SAMPLE (NOSAMPLER vs SAMPLER)
+# gfx9/gfx10/gfx11: position-based (vmcnt 1)
+# gfx12: NOT in-order (loadcnt 0) - different counters
+name: global_image_sample_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11
+    ; GFX9-LABEL: name: global_image_sample_waw
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: global_image_sample_waw
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: global_image_sample_waw
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: global_image_sample_waw
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: IMAGE_SAMPLE_V1_V2
+    ; GFX12-NEXT: S_WAIT_LOADCNT 0
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32
+    $vgpr4 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr5 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+---
+# BUFFER_LOAD → BUFFER_LOAD (same VmemType: NOSAMPLER)
+# Expected: in-order
+name: buffer_buffer_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1_sgpr2_sgpr3, $vgpr0
+    ; GFX9-LABEL: name: buffer_buffer_waw
+    ; GFX9: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX9-NEXT: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: buffer_buffer_waw
+    ; GFX10: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX10-NEXT: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: buffer_buffer_waw
+    ; GFX11: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX11-NEXT: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: buffer_buffer_waw
+    ; GFX12: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX12-NEXT: BUFFER_LOAD_DWORD_OFFEN
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = BUFFER_LOAD_DWORD_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 0, 0, 0, implicit $exec
+    $vgpr3 = BUFFER_LOAD_DWORD_OFFEN $vgpr0, $sgpr0_sgpr1_sgpr2_sgpr3, 0, 4, 0, 0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+---
+# DS_READ → DS_READ (same type: loads only)
+# Expected: in-order for lgkmcnt/dscnt
+name: ds_read_ds_read_waw
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $m0
+    ; GFX9-LABEL: name: ds_read_ds_read_waw
+    ; GFX9: DS_READ_B32
+    ; GFX9-NEXT: DS_READ_B32
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: ds_read_ds_read_waw
+    ; GFX10: DS_READ_B32
+    ; GFX10-NEXT: DS_READ_B32
+    ; GFX10-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: ds_read_ds_read_waw
+    ; GFX11: DS_READ_B32
+    ; GFX11-NEXT: DS_READ_B32
+    ; GFX11-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: ds_read_ds_read_waw
+    ; GFX12: DS_READ_B32
+    ; GFX12-NEXT: DS_READ_B32
+    ; GFX12-NEXT: S_WAIT_DSCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    $vgpr3 = DS_READ_B32_gfx9 $vgpr0, 4, 0, implicit $exec, implicit $m0
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+---
+# DS_READ → DS_WRITE (mixed types: load then store)
+# gfx9/10/11: position-based (lgkmcnt 1) - old pass doesn't distinguish
+# gfx12: position-based (dscnt 1)
+name: ds_read_ds_write_war
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $vgpr0, $vgpr1, $m0
+    ; GFX9-LABEL: name: ds_read_ds_write_war
+    ; GFX9: DS_READ_B32
+    ; GFX9-NEXT: DS_WRITE_B32
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX10-LABEL: name: ds_read_ds_write_war
+    ; GFX10: DS_READ_B32
+    ; GFX10-NEXT: DS_WRITE_B32
+    ; GFX10-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX11-LABEL: name: ds_read_ds_write_war
+    ; GFX11: DS_READ_B32
+    ; GFX11-NEXT: DS_WRITE_B32
+    ; GFX11-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32
+    ;
+    ; GFX12-LABEL: name: ds_read_ds_write_war
+    ; GFX12: DS_READ_B32
+    ; GFX12-NEXT: DS_WRITE_B32
+    ; GFX12-NEXT: S_WAIT_DSCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32
+    $vgpr2 = DS_READ_B32_gfx9 $vgpr0, 0, 0, implicit $exec, implicit $m0
+    DS_WRITE_B32_gfx9 $vgpr0, $vgpr1, 4, 0, implicit $exec, implicit $m0
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+# Test: GLOBAL (VMEM) src with FLAT pending on vmcnt.
+# Pre-GFX10: vmcnt 0 (conservative). GFX10+: vmcnt 1 (position-based, unless flag set).
+# On GFX12, GLOBAL uses loadcnt, FLAT uses loadcnt/dscnt - loadcnt is shared.
+---
+name: global_global_with_flat
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: global_global_with_flat
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: global_global_with_flat
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: global_global_with_flat
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: global_global_with_flat
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32_e32
+    $vgpr4 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr3 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+# Test: DS src with SMEM pending on lgkmcnt.
+# All generations: lgkmcnt 0 (SMEM always completes out-of-order).
+# On GFX12, DS uses dscnt, SMEM uses kmcnt - separate counters.
+---
+name: ds_ds_with_smem_first
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: ds_ds_with_smem_first
+    ; GFX9: S_LOAD_DWORD_IMM
+    ; GFX9-NEXT: DS_READ_B32
+    ; GFX9-NEXT: DS_READ_B32
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: ds_ds_with_smem_first
+    ; GFX10: S_LOAD_DWORD_IMM
+    ; GFX10-NEXT: DS_READ_B32
+    ; GFX10-NEXT: DS_READ_B32
+    ; GFX10-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: ds_ds_with_smem_first
+    ; GFX11: S_LOAD_DWORD_IMM
+    ; GFX11-NEXT: DS_READ_B32
+    ; GFX11-NEXT: DS_READ_B32
+    ; GFX11-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: ds_ds_with_smem_first
+    ; GFX12: S_LOAD_DWORD_IMM
+    ; GFX12-NEXT: DS_READ_B32
+    ; GFX12-NEXT: DS_READ_B32
+    ; GFX12-NEXT: S_WAIT_DSCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32_e32
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $vgpr2 = DS_READ_B32 $vgpr0, 0, 0, implicit $m0, implicit $exec
+    $vgpr3 = DS_READ_B32 $vgpr0, 4, 0, implicit $m0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+# Test: DS src with FLAT pending on lgkmcnt.
+# Pre-GFX10: lgkmcnt 0 (conservative). GFX10+: lgkmcnt 1 (position-based, unless flag set).
+# On GFX12, DS uses dscnt, FLAT uses loadcnt/dscnt - dscnt is shared.
+---
+name: ds_ds_with_flat_2
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: ds_ds_with_flat_2
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: DS_READ_B32
+    ; GFX9-NEXT: DS_READ_B32
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX9-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: ds_ds_with_flat_2
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: DS_READ_B32
+    ; GFX10-NEXT: DS_READ_B32
+    ; GFX10-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX10-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: ds_ds_with_flat_2
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: DS_READ_B32
+    ; GFX11-NEXT: DS_READ_B32
+    ; GFX11-NEXT: S_WAITCNT .Lgkmcnt_1
+    ; GFX11-NEXT: $vgpr2 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: ds_ds_with_flat_2
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: DS_READ_B32
+    ; GFX12-NEXT: DS_READ_B32
+    ; GFX12-NEXT: S_WAIT_DSCNT 1
+    ; GFX12-NEXT: $vgpr2 = V_MOV_B32_e32
+    $vgpr4 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr2 = DS_READ_B32 $vgpr0, 0, 0, implicit $m0, implicit $exec
+    $vgpr3 = DS_READ_B32 $vgpr0, 4, 0, implicit $m0, implicit $exec
+    $vgpr2 = V_MOV_B32_e32 $vgpr2, implicit $exec
+...
+
+# Test: SMEM src with SMEM pending on lgkmcnt (only SMEM, no mixing).
+# All generations: lgkmcnt 0 (SMEM always completes out-of-order).
+# On GFX12, SMEM uses kmcnt - position-based OK.
+---
+name: smem_smem
+machineFunctionInfo:
+  isEntryFunction: true
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: smem_smem
+    ; GFX9: S_LOAD_DWORD_IMM
+    ; GFX9-NEXT: S_LOAD_DWORD_IMM
+    ; GFX9-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX9-NEXT: $sgpr2 = S_MOV_B32
+    ;
+    ; GFX10-LABEL: name: smem_smem
+    ; GFX10: S_LOAD_DWORD_IMM
+    ; GFX10-NEXT: S_LOAD_DWORD_IMM
+    ; GFX10-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX10-NEXT: $sgpr2 = S_MOV_B32
+    ;
+    ; GFX11-LABEL: name: smem_smem
+    ; GFX11: S_LOAD_DWORD_IMM
+    ; GFX11-NEXT: S_LOAD_DWORD_IMM
+    ; GFX11-NEXT: S_WAITCNT .Lgkmcnt_0
+    ; GFX11-NEXT: $sgpr2 = S_MOV_B32
+    ;
+    ; GFX12-LABEL: name: smem_smem
+    ; GFX12: S_LOAD_DWORD_IMM
+    ; GFX12-NEXT: S_LOAD_DWORD_IMM
+    ; GFX12-NEXT: S_WAIT_KMCNT 0
+    ; GFX12-NEXT: $sgpr2 = S_MOV_B32
+    $sgpr2 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 0, 0 :: (load (s32))
+    $sgpr3 = S_LOAD_DWORD_IMM $sgpr0_sgpr1, 4, 0 :: (load (s32))
+    $sgpr2 = S_MOV_B32 $sgpr2
+...
+
+# Test: BVH src with GLOBAL (VMEM non-sampler) pending on vmcnt.
+# BVH is a different VmemType than NOSAMPLER.
+# All gens use position-based vmcnt 1. GFX12 has separate bvhcnt.
+---
+name: bvh_bvh_with_global
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: bvh_bvh_with_global
+    ; GFX9: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: bvh_bvh_with_global
+    ; GFX10: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: bvh_bvh_with_global
+    ; GFX11: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: bvh_bvh_with_global
+    ; GFX12: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: S_WAIT_BVHCNT 1
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32_e32
+    $vgpr60 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr4_vgpr5_vgpr6_vgpr7 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr20_vgpr21_vgpr22_vgpr23_vgpr24_vgpr25_vgpr26_vgpr27_vgpr28_vgpr29_vgpr30, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr8_vgpr9_vgpr10_vgpr11 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr40_vgpr41_vgpr42_vgpr43_vgpr44_vgpr45_vgpr46_vgpr47_vgpr48_vgpr49_vgpr50, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+# Test: GLOBAL (VMEM non-sampler) src with BVH pending on vmcnt.
+# All gens use position-based vmcnt 1. GFX12 has separate counters.
+---
+name: global_global_with_bvh
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: global_global_with_bvh
+    ; GFX9: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: global_global_with_bvh
+    ; GFX10: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: global_global_with_bvh
+    ; GFX11: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: global_global_with_bvh
+    ; GFX12: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: GLOBAL_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT 1
+    ; GFX12-NEXT: $vgpr10 = V_MOV_B32_e32
+    $vgpr4_vgpr5_vgpr6_vgpr7 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr20_vgpr21_vgpr22_vgpr23_vgpr24_vgpr25_vgpr26_vgpr27_vgpr28_vgpr29_vgpr30, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr10 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec
+    $vgpr11 = GLOBAL_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec
+    $vgpr10 = V_MOV_B32_e32 $vgpr10, implicit $exec
+...
+
+# Test: BVH src with IMAGE_SAMPLE pending on vmcnt.
+# BVH and SAMPLER are different VmemTypes.
+# All gens use position-based vmcnt 1. GFX12 has separate counters.
+---
+name: bvh_bvh_with_sample
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: bvh_bvh_with_sample
+    ; GFX9: IMAGE_SAMPLE
+    ; GFX9-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: bvh_bvh_with_sample
+    ; GFX10: IMAGE_SAMPLE
+    ; GFX10-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: bvh_bvh_with_sample
+    ; GFX11: IMAGE_SAMPLE
+    ; GFX11-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: bvh_bvh_with_sample
+    ; GFX12: IMAGE_SAMPLE
+    ; GFX12-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: S_WAIT_BVHCNT 1
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32_e32
+    $vgpr60 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr4_vgpr5_vgpr6_vgpr7 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr20_vgpr21_vgpr22_vgpr23_vgpr24_vgpr25_vgpr26_vgpr27_vgpr28_vgpr29_vgpr30, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr8_vgpr9_vgpr10_vgpr11 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr40_vgpr41_vgpr42_vgpr43_vgpr44_vgpr45_vgpr46_vgpr47_vgpr48_vgpr49_vgpr50, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+# Test: IMAGE_SAMPLE src with BVH pending on vmcnt.
+# All gens use position-based vmcnt 1. GFX12 has separate counters.
+---
+name: sample_sample_with_bvh
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: sample_sample_with_bvh
+    ; GFX9: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: IMAGE_SAMPLE
+    ; GFX9-NEXT: IMAGE_SAMPLE
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX9-NEXT: $vgpr60 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: sample_sample_with_bvh
+    ; GFX10: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: IMAGE_SAMPLE
+    ; GFX10-NEXT: IMAGE_SAMPLE
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr60 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: sample_sample_with_bvh
+    ; GFX11: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: IMAGE_SAMPLE
+    ; GFX11-NEXT: IMAGE_SAMPLE
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr60 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: sample_sample_with_bvh
+    ; GFX12: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: IMAGE_SAMPLE
+    ; GFX12-NEXT: IMAGE_SAMPLE
+    ; GFX12-NEXT: S_WAIT_SAMPLECNT 1
+    ; GFX12-NEXT: $vgpr60 = V_MOV_B32_e32
+    $vgpr4_vgpr5_vgpr6_vgpr7 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr20_vgpr21_vgpr22_vgpr23_vgpr24_vgpr25_vgpr26_vgpr27_vgpr28_vgpr29_vgpr30, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr60 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr61 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr60 = V_MOV_B32_e32 $vgpr60, implicit $exec
+...
+
+# Test: BVH src with FLAT pending on vmcnt.
+# Pre-GFX10: vmcnt 0 (conservative). GFX10+: vmcnt 1 (position-based).
+# GFX12 has separate counters (bvhcnt, loadcnt/dscnt).
+---
+name: bvh_bvh_with_flat
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: bvh_bvh_with_flat
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX9-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: bvh_bvh_with_flat
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: bvh_bvh_with_flat
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr4 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: bvh_bvh_with_flat
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: S_WAIT_BVHCNT 1
+    ; GFX12-NEXT: $vgpr4 = V_MOV_B32_e32
+    $vgpr60 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr4_vgpr5_vgpr6_vgpr7 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr20_vgpr21_vgpr22_vgpr23_vgpr24_vgpr25_vgpr26_vgpr27_vgpr28_vgpr29_vgpr30, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr8_vgpr9_vgpr10_vgpr11 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr40_vgpr41_vgpr42_vgpr43_vgpr44_vgpr45_vgpr46_vgpr47_vgpr48_vgpr49_vgpr50, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr4 = V_MOV_B32_e32 $vgpr4, implicit $exec
+...
+
+# Test: FLAT src with BVH pending on vmcnt.
+# Pre-GFX10: vmcnt 0/lgkmcnt 0 (conservative). GFX10+: vmcnt 1/lgkmcnt 1.
+# GFX12 has separate counters (loadcnt/dscnt, bvhcnt).
+---
+name: flat_flat_with_bvh
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: flat_flat_with_bvh
+    ; GFX9: IMAGE_BVH_INTERSECT_RAY
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+    ; GFX9-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: flat_flat_with_bvh
+    ; GFX10: IMAGE_BVH_INTERSECT_RAY
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1_Lgkmcnt_1
+    ; GFX10-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: flat_flat_with_bvh
+    ; GFX11: IMAGE_BVH_INTERSECT_RAY
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1_Lgkmcnt_1
+    ; GFX11-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: flat_flat_with_bvh
+    ; GFX12: IMAGE_BVH_INTERSECT_RAY
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_1_Dscnt_1
+    ; GFX12-NEXT: $vgpr10 = V_MOV_B32_e32
+    $vgpr4_vgpr5_vgpr6_vgpr7 = IMAGE_BVH_INTERSECT_RAY_sa_gfx10 $vgpr20_vgpr21_vgpr22_vgpr23_vgpr24_vgpr25_vgpr26_vgpr27_vgpr28_vgpr29_vgpr30, $sgpr0_sgpr1_sgpr2_sgpr3, 0, implicit $exec :: (load (s128))
+    $vgpr10 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr11 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec, implicit $flat_scr
+    $vgpr10 = V_MOV_B32_e32 $vgpr10, implicit $exec
+...
+
+# Test: IMAGE_SAMPLE src with FLAT pending on vmcnt.
+# Pre-GFX10: vmcnt 0 (conservative). GFX10+: vmcnt 1 (position-based).
+# GFX12 has separate counters (samplecnt, loadcnt/dscnt).
+---
+name: sample_sample_with_flat
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: sample_sample_with_flat
+    ; GFX9: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: IMAGE_SAMPLE
+    ; GFX9-NEXT: IMAGE_SAMPLE
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0
+    ; GFX9-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: sample_sample_with_flat
+    ; GFX10: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: IMAGE_SAMPLE
+    ; GFX10-NEXT: IMAGE_SAMPLE
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX10-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: sample_sample_with_flat
+    ; GFX11: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: IMAGE_SAMPLE
+    ; GFX11-NEXT: IMAGE_SAMPLE
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1
+    ; GFX11-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: sample_sample_with_flat
+    ; GFX12: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: IMAGE_SAMPLE
+    ; GFX12-NEXT: IMAGE_SAMPLE
+    ; GFX12-NEXT: S_WAIT_SAMPLECNT 1
+    ; GFX12-NEXT: $vgpr10 = V_MOV_B32_e32
+    $vgpr60 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr10 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr11 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr10 = V_MOV_B32_e32 $vgpr10, implicit $exec
+...
+
+# Test: FLAT src with IMAGE_SAMPLE pending on vmcnt.
+# Pre-GFX10: vmcnt 0/lgkmcnt 0 (conservative). GFX10+: vmcnt 1/lgkmcnt 1.
+# GFX12 has separate counters (loadcnt/dscnt, samplecnt).
+---
+name: flat_flat_with_sample
+body: |
+  bb.0:
+    ; GFX9-LABEL: name: flat_flat_with_sample
+    ; GFX9: IMAGE_SAMPLE
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: FLAT_LOAD_DWORD
+    ; GFX9-NEXT: S_WAITCNT .Vmcnt_0_Lgkmcnt_0
+    ; GFX9-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX10-LABEL: name: flat_flat_with_sample
+    ; GFX10: IMAGE_SAMPLE
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: FLAT_LOAD_DWORD
+    ; GFX10-NEXT: S_WAITCNT .Vmcnt_1_Lgkmcnt_1
+    ; GFX10-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX11-LABEL: name: flat_flat_with_sample
+    ; GFX11: IMAGE_SAMPLE
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: FLAT_LOAD_DWORD
+    ; GFX11-NEXT: S_WAITCNT .Vmcnt_1_Lgkmcnt_1
+    ; GFX11-NEXT: $vgpr10 = V_MOV_B32_e32
+    ;
+    ; GFX12-LABEL: name: flat_flat_with_sample
+    ; GFX12: IMAGE_SAMPLE
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: FLAT_LOAD_DWORD
+    ; GFX12-NEXT: S_WAIT_LOADCNT_DSCNT .Loadcnt_1_Dscnt_1
+    ; GFX12-NEXT: $vgpr10 = V_MOV_B32_e32
+    $vgpr60 = IMAGE_SAMPLE_V1_V2 $vgpr0_vgpr1, $sgpr0_sgpr1_sgpr2_sgpr3_sgpr4_sgpr5_sgpr6_sgpr7, $sgpr8_sgpr9_sgpr10_sgpr11, 1, 0, 0, 0, 0, 0, 0, 0, implicit $exec :: (load (s32))
+    $vgpr10 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 0, 0, implicit $exec, implicit $flat_scr
+    $vgpr11 = FLAT_LOAD_DWORD $vgpr0_vgpr1, 4, 0, implicit $exec, implicit $flat_scr
+    $vgpr10 = V_MOV_B32_e32 $vgpr10, implicit $exec
+...

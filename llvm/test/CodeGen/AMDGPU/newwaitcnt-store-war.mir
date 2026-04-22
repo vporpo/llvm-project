@@ -1,0 +1,31 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1200 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s -check-prefix=GFX12
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1200 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s -check-prefix=GFX12
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=si-insert-waitcnts %s -o - | FileCheck %s -check-prefix=GFX1250
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -run-pass=amdgpu-new-insert-waitcnts %s -o - | FileCheck %s -check-prefix=GFX1250
+
+# Test overwriting a store's data register while the store is in flight.
+# XCnt tracks address translation, NOT data consumption. Data is consumed
+# at dispatch, so no XCnt wait should be needed for the data register.
+# However, the old pass conservatively waits for XCnt=0 before overwriting
+# ANY use operand, including data registers.
+# XCnt is gfx1250+ only; gfx1200 has no XCnt counter.
+
+# GFX12-LABEL: name: store_war_overwrite_data
+# GFX12: GLOBAL_STORE_DWORD
+# GFX12-NEXT: $vgpr2 = V_MOV_B32_e32 0
+
+# GFX1250-LABEL: name: store_war_overwrite_data
+# GFX1250: GLOBAL_STORE_DWORD
+# GFX1250-NEXT: S_WAIT_XCNT 0
+# GFX1250-NEXT: $vgpr2 = V_MOV_B32_e32 0
+
+---
+name: store_war_overwrite_data
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1, $vgpr2
+    ; Store reads $vgpr2 as data
+    GLOBAL_STORE_DWORD $vgpr0_vgpr1, $vgpr2, 0, 0, implicit $exec
+    ; Overwrite data register - is this a WAR hazard?
+    $vgpr2 = V_MOV_B32_e32 0, implicit $exec
+...

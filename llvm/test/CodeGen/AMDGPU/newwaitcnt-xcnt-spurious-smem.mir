@@ -1,0 +1,42 @@
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -O0 -run-pass=si-insert-waitcnts -o - %s | FileCheck %s
+# RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1250 -O0 -run-pass=amdgpu-new-insert-waitcnts -o - %s | FileCheck %s
+
+# An SMEM load followed by an SGPR move consuming the result should only need
+# a KmCnt wait, not an XCnt wait. The new pass incorrectly inserts a spurious
+# S_WAIT_XCNT before the move.
+
+# CHECK-LABEL: name: spurious_xcnt
+# CHECK:      S_LOAD_DWORDX2_IMM
+# CHECK-NEXT: S_WAIT_KMCNT 0
+# CHECK-NOT:  S_WAIT_XCNT
+# CHECK-NEXT: $sgpr4_sgpr5 = S_MOV_B64
+
+---
+name: spurious_xcnt
+tracksRegLiveness: true
+machineFunctionInfo:
+  isEntryFunction: true
+  scratchRSrcReg: '$private_rsrc_reg'
+  stackPtrOffsetReg: '$sgpr32'
+  sgprForEXECCopy: '$sgpr105'
+body: |
+  bb.0:
+    liveins: $sgpr4_sgpr5
+
+    renamable $sgpr2_sgpr3 = S_LOAD_DWORDX2_IMM killed renamable $sgpr4_sgpr5, 0, 32 :: (dereferenceable invariant load (s64), addrspace 4)
+    $sgpr4_sgpr5 = S_MOV_B64 $sgpr2_sgpr3
+    renamable $vgpr0 = V_MOV_B32_e32 0, implicit $exec
+    renamable $vgpr1 = V_MOV_B32_e32 1, implicit $exec
+    S_WAIT_LOADCNT_soft 0
+    S_WAIT_STORECNT_soft 0
+    GLOBAL_WB 24, implicit $exec
+    S_WAIT_LOADCNT_soft 0
+    S_WAIT_STORECNT_soft 0
+    S_WAIT_DSCNT_soft 0
+    S_WAIT_XCNT_soft 0
+    GLOBAL_ATOMIC_ADD_SADDR killed renamable $vgpr0, killed renamable $vgpr1, killed renamable $sgpr2_sgpr3, 0, 24, implicit $exec :: (load store seq_cst (s32), addrspace 1)
+    S_WAIT_STORECNT_soft 0
+    GLOBAL_INV 24, implicit $exec
+    S_WAIT_LOADCNT_soft 0
+    S_ENDPGM 0
+...
